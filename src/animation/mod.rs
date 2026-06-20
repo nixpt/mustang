@@ -32,8 +32,6 @@ pub enum AnimationState {
 pub enum AnimatedProperty {
     /// Blur radius animation
     Blur { from: f32, to: f32 },
-    /// Opacity animation (0.0 - 1.0)
-    Opacity { from: f32, to: f32 },
     /// Scale animation
     Scale { from: f32, to: f32 },
     /// Translation animation
@@ -57,11 +55,6 @@ impl AnimatedProperty {
             AnimatedProperty::Blur { from, to } => {
                 let _radius = from + (to - from) * t;
                 EffectType::BackdropBlur
-            }
-            AnimatedProperty::Opacity { from, to } => {
-                let _opacity = from + (to - from) * t;
-                // Opacity would be handled via blend mode
-                EffectType::BackdropBlur // Placeholder
             }
             AnimatedProperty::Scale { from, to } => {
                 let _scale = from + (to - from) * t;
@@ -138,7 +131,6 @@ impl AnimatedProperty {
                 };
                 Effect::color_adjust(selector, params)
             }
-            _ => Effect::blur(selector, 0.0, viewport.0, viewport.1),
         }
     }
 }

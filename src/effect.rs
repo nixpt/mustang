@@ -115,8 +115,13 @@ impl Default for TransformParams {
     }
 }
 
+/// z-index assigned to `Clip` effects so they always render on top
+/// of any other effect applied to the same region.
+pub const CLIP_Z_INDEX: i32 = 9999;
+
 /// A Mustang effect to be applied to a region
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct Effect {
     /// Type of effect
     pub effect_type: EffectType,
@@ -192,7 +197,7 @@ impl Effect {
             blur_params: None,
             transform_params: None,
             color_params: None,
-            z_index: 9999, // Clips are always top
+            z_index: CLIP_Z_INDEX,
         }
     }
 
