@@ -37,9 +37,6 @@ pub use animation::{
 pub use compositor::region::Region;
 pub use config::{MustangConfig, MustangMode};
 
-#[cfg(feature = "animation")]
-pub use animation::js_binding::JsAnimationRuntime;
-
 #[cfg(feature = "gpu")]
 pub use renderer::{
     EffectScene, MustangSceneBundle, VelloRendererOptions, VelloScenePainter, VelloWindowRenderer,

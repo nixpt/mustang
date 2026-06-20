@@ -8,12 +8,6 @@
 
 pub mod easing;
 
-// js_binding (boa_engine JS runtime) deferred — boa_engine 0.21 pins icu_normalizer ~2.0.0
-// which conflicts with parley ^0.10 -> icu_normalizer ^2.1.1. Re-enable when boa_engine
-// upgrades its icu dep.
-// #[cfg(feature = "animation")]
-// pub mod js_binding;
-
 use crate::effect::{ColorAdjustParams, Effect, EffectType, TransformParams};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -392,9 +386,12 @@ impl AnimationEngine {
         }
     }
 
-    /// Get count of active (non-completed) animations
+    /// Get count of animations currently on the timeline (Running)
     pub fn active_count(&self) -> usize {
-        self.animations.iter().filter(|a| !a.is_complete()).count()
+        self.animations
+            .iter()
+            .filter(|a| a.state == AnimationState::Running)
+            .count()
     }
 
     /// Clear all completed animations

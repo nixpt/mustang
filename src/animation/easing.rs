@@ -175,7 +175,7 @@ fn linear(t: f32) -> f32 {
     t
 }
 
-// CSS default ease (approximated as cubic-bezier(0.25, 0.1, 0.25, 1.0))
+// CSS default ease (cubic-bezier(0.25, 0.1, 0.25, 1.0))
 fn ease(t: f32) -> f32 {
     cubic_bezier(t, 0.25, 0.1, 0.25, 1.0)
 }
@@ -195,15 +195,38 @@ fn ease_in_out(t: f32) -> f32 {
     cubic_bezier(t, 0.42, 0.0, 0.58, 1.0)
 }
 
-// Cubic Bezier approximation
-fn cubic_bezier(t: f32, p0: f32, p1: f32, p2: f32, p3: f32) -> f32 {
-    let u = 1.0 - t;
-    let tt = t * t;
-    let uu = u * u;
-    let uuu = uu * u;
-    let ttt = tt * t;
+fn cubic_bezier(x: f32, x1: f32, y1: f32, x2: f32, y2: f32) -> f32 {
+    if x <= 0.0 {
+        return 0.0;
+    }
+    if x >= 1.0 {
+        return 1.0;
+    }
 
-    uuu * p0 + 3.0 * uu * t * p1 + 3.0 * u * tt * p2 + ttt * p3
+    let mut t = x;
+    for _ in 0..8 {
+        let one_minus_t = 1.0 - t;
+        let bezier_x = 3.0 * one_minus_t * one_minus_t * t * x1
+            + 3.0 * one_minus_t * t * t * x2
+            + t * t * t;
+        let bezier_x_d = 3.0 * one_minus_t * one_minus_t * x1
+            + 6.0 * one_minus_t * t * (x2 - x1)
+            + 3.0 * t * t * (1.0 - x2);
+        let dx = bezier_x - x;
+        if dx.abs() < 1e-6 {
+            break;
+        }
+        if bezier_x_d.abs() < 1e-6 {
+            t = (t + x) * 0.5;
+            continue;
+        }
+        t = (t - dx / bezier_x_d).clamp(0.0, 1.0);
+    }
+
+    let one_minus_t = 1.0 - t;
+    3.0 * one_minus_t * one_minus_t * t * y1
+        + 3.0 * one_minus_t * t * t * y2
+        + t * t * t
 }
 
 // Quadratic
