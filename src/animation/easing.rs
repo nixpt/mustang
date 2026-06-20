@@ -206,9 +206,8 @@ fn cubic_bezier(x: f32, x1: f32, y1: f32, x2: f32, y2: f32) -> f32 {
     let mut t = x;
     for _ in 0..8 {
         let one_minus_t = 1.0 - t;
-        let bezier_x = 3.0 * one_minus_t * one_minus_t * t * x1
-            + 3.0 * one_minus_t * t * t * x2
-            + t * t * t;
+        let bezier_x =
+            3.0 * one_minus_t * one_minus_t * t * x1 + 3.0 * one_minus_t * t * t * x2 + t * t * t;
         let bezier_x_d = 3.0 * one_minus_t * one_minus_t * x1
             + 6.0 * one_minus_t * t * (x2 - x1)
             + 3.0 * t * t * (1.0 - x2);
@@ -224,9 +223,7 @@ fn cubic_bezier(x: f32, x1: f32, y1: f32, x2: f32, y2: f32) -> f32 {
     }
 
     let one_minus_t = 1.0 - t;
-    3.0 * one_minus_t * one_minus_t * t * y1
-        + 3.0 * one_minus_t * t * t * y2
-        + t * t * t
+    3.0 * one_minus_t * one_minus_t * t * y1 + 3.0 * one_minus_t * t * t * y2 + t * t * t
 }
 
 // Quadratic
