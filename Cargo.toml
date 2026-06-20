@@ -1,0 +1,53 @@
+[package]
+name = "arniko-mustang"
+version = "0.2.99"
+edition = "2024"
+rust-version = "1.85.0"
+authors = ["The Exosphere Authors"]
+description = "Mustang: GPU-Accelerated Effect Compositor for Exosphere"
+license = "MIT OR Apache-2.0"
+homepage = "https://github.com/nixpt/mustang"
+repository = "https://github.com/nixpt/mustang"
+categories = ["gui", "rendering"]
+keywords = ["gpu", "vello", "compositor", "effects", "ui"]
+
+[lib]
+name = "mustang"
+
+[features]
+default = []
+gpu = ["dep:anyrender", "dep:anyrender_vello", "dep:wgpu", "dep:kurbo", "dep:peniko", "dep:vello"]
+# animation = easing + engine (no JS runtime; boa_engine removed — icu_normalizer ~2.0.0 conflicts with parley ^0.10 ^2.1.1)
+animation = []
+full = ["gpu", "animation"]
+
+[dependencies]
+anyhow = "1.0"
+tracing = "0.1"
+
+[dependencies.anyrender]
+version = "0.7"
+optional = true
+
+[dependencies.anyrender_vello]
+version = "0.7"
+optional = true
+
+[dependencies.vello]
+version = "0.7"
+optional = true
+
+[dependencies.wgpu]
+version = "27"
+optional = true
+
+[dependencies.kurbo]
+version = "0.13"
+optional = true
+
+[dependencies.peniko]
+version = "0.6"
+optional = true
+
+[dev-dependencies]
+tokio-test = "0.4"
