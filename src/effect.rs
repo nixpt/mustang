@@ -216,9 +216,129 @@ impl Effect {
         )
     }
 
+    /// Returns true if this effect can be applied directly via
+    /// `apply_to_scene` without a layer scope. BackdropBlur and ColorAdjust
+    /// qualify; Transform and Clip require scope handling.
+    pub fn is_one_shot(&self) -> bool {
+        matches!(
+            self.effect_type,
+            EffectType::BackdropBlur | EffectType::ColorAdjust
+        )
+    }
+
+    /// Returns true if this effect requires a layer scope (Transform, Clip).
+    /// Use `Effect::begin_layer_scope` to obtain an RAII guard that pops the
+    /// layer on drop.
+    pub fn is_layer_scope(&self) -> bool {
+        matches!(self.effect_type, EffectType::Transform2D | EffectType::Clip)
+    }
+
     /// Returns true if this effect requires GPU compute
     pub fn requires_gpu_compute(&self) -> bool {
         matches!(self.effect_type, EffectType::ColorAdjust)
+    }
+
+    /// Begin a layer scope for this effect. Returns `Some(guard)` for
+    /// layer effects (Transform, Clip) and `None` for one-shot effects
+    /// (Blur, ColorAdjust). The guard pops the layer on drop; call
+    /// `LayerGuard::release` to opt out of automatic pop.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use mustang::{Effect, EffectScene};
+    /// # fn render<S: EffectScene>(scene: &mut S, effect: Effect) {
+    /// if let Some(_guard) = effect.begin_layer_scope(scene, (800, 600)) {
+    ///     // render content into the layered scene
+    /// } // guard drops, pop_layer is called
+    /// # }
+    /// ```
+    #[cfg(feature = "gpu")]
+    pub fn begin_layer_scope<'a, S: anyrender::PaintScene>(
+        &self,
+        scene: &'a mut S,
+        _viewport: (u32, u32),
+    ) -> Option<LayerGuard<'a, S>> {
+        use kurbo::Rect;
+        use peniko::BlendMode;
+
+        match self.effect_type {
+            EffectType::Transform2D => {
+                let params = self.transform_params.as_ref()?;
+                let rect = Rect::new(
+                    self.region.x as f64,
+                    self.region.y as f64,
+                    (self.region.x + self.region.width) as f64,
+                    (self.region.y + self.region.height) as f64,
+                );
+                let transform = kurbo::Affine::translate((
+                    (self.region.x + self.region.width * params.pivot_x) as f64,
+                    (self.region.y + self.region.height * params.pivot_y) as f64,
+                )) * kurbo::Affine::rotate(
+                    params.rotate_degrees.to_radians() as f64
+                ) * kurbo::Affine::scale_non_uniform(
+                    params.scale_x as f64,
+                    params.scale_y as f64,
+                ) * kurbo::Affine::translate((
+                    -(self.region.x + self.region.width * params.pivot_x) as f64,
+                    -(self.region.y + self.region.height * params.pivot_y) as f64,
+                )) * kurbo::Affine::translate((
+                    params.translate_x as f64,
+                    params.translate_y as f64,
+                ));
+                scene.push_layer(BlendMode::default(), 1.0, transform, &rect);
+                Some(LayerGuard::new(scene))
+            }
+            EffectType::Clip => {
+                let rect = Rect::new(
+                    self.region.x as f64,
+                    self.region.y as f64,
+                    (self.region.x + self.region.width) as f64,
+                    (self.region.y + self.region.height) as f64,
+                );
+                scene.push_clip_layer(kurbo::Affine::IDENTITY, &rect);
+                Some(LayerGuard::new(scene))
+            }
+            _ => None,
+        }
+    }
+}
+
+/// RAII guard for a Vello/anyrender layer. Pops the layer on drop.
+///
+/// Created by `Effect::begin_layer_scope` and `EffectScene::begin_layer_scope`.
+/// Holding the guard keeps the layer active; dropping it pops the layer.
+/// Call `LayerGuard::release` to disarm the guard and pop manually.
+#[cfg(feature = "gpu")]
+pub struct LayerGuard<'a, S: ?Sized + anyrender::PaintScene> {
+    scene: &'a mut S,
+    active: bool,
+}
+
+#[cfg(feature = "gpu")]
+impl<'a, S: ?Sized + anyrender::PaintScene> LayerGuard<'a, S> {
+    /// Create a new active guard wrapping the given scene.
+    pub fn new(scene: &'a mut S) -> Self {
+        Self {
+            scene,
+            active: true,
+        }
+    }
+
+    /// Disarm the guard so its `Drop` will not pop the layer. After
+    /// calling this, the caller is responsible for popping the layer
+    /// (e.g. when transferring ownership to an async pipeline).
+    pub fn release(mut self) {
+        self.active = false;
+    }
+}
+
+#[cfg(feature = "gpu")]
+impl<'a, S: ?Sized + anyrender::PaintScene> Drop for LayerGuard<'a, S> {
+    fn drop(&mut self) {
+        if self.active {
+            self.scene.pop_layer();
+        }
     }
 }
 
@@ -230,7 +350,10 @@ impl Effect {
 /// has methods that make it not object-safe.
 #[cfg(feature = "gpu")]
 pub trait ApplyEffect<S: anyrender::PaintScene> {
-    /// Apply this effect to a scene
+    /// Apply this effect to a scene. Only valid for one-shot effects
+    /// (BackdropBlur, ColorAdjust). For layer effects (Transform, Clip),
+    /// use `Effect::begin_layer_scope` / `EffectScene::begin_layer_scope`
+    /// to obtain an RAII guard that pops the layer on drop.
     fn apply_to_scene(&self, scene: &mut S, viewport: (u32, u32));
 }
 
@@ -238,7 +361,6 @@ pub trait ApplyEffect<S: anyrender::PaintScene> {
 impl<S: anyrender::PaintScene> ApplyEffect<S> for Effect {
     fn apply_to_scene(&self, scene: &mut S, _viewport: (u32, u32)) {
         use kurbo::Rect;
-        use peniko::BlendMode;
 
         match self.effect_type {
             EffectType::BackdropBlur => {
@@ -249,18 +371,14 @@ impl<S: anyrender::PaintScene> ApplyEffect<S> for Effect {
                         (self.region.x + self.region.width) as f64,
                         (self.region.y + self.region.height) as f64,
                     );
-                    // Map BlurQuality to a corner-radius fraction: higher quality = rounder.
                     let corner_radius = match params.quality {
                         BlurQuality::Low => 0.0,
                         BlurQuality::Medium => 4.0,
                         BlurQuality::High => 8.0,
                         BlurQuality::Ultra => 12.0,
                     };
-                    // std_dev ≈ radius / 2 is the conventional CSS mapping.
                     let std_dev = (params.radius / 2.0) as f64;
-                    // Frosted-glass: a near-white tint at low alpha so blur halos are visible.
                     let tint = peniko::color::palette::css::WHITE.with_alpha(0.15);
-                    // Multi-pass: each pass slightly larger sigma for smoother result.
                     for pass in 0..params.passes {
                         let sigma = std_dev * (1.0 + pass as f64 * 0.3);
                         scene.draw_box_shadow(
@@ -273,52 +391,15 @@ impl<S: anyrender::PaintScene> ApplyEffect<S> for Effect {
                     }
                 }
             }
-            EffectType::Transform2D => {
-                if let Some(ref params) = self.transform_params {
-                    // Apply transform using push_layer with transform
-                    let rect = Rect::new(
-                        self.region.x as f64,
-                        self.region.y as f64,
-                        (self.region.x + self.region.width) as f64,
-                        (self.region.y + self.region.height) as f64,
-                    );
-
-                    // Build affine transform
-                    let transform = kurbo::Affine::translate((
-                        (self.region.x + self.region.width * params.pivot_x) as f64,
-                        (self.region.y + self.region.height * params.pivot_y) as f64,
-                    )) * kurbo::Affine::rotate(
-                        params.rotate_degrees.to_radians() as f64
-                    ) * kurbo::Affine::scale_non_uniform(
-                        params.scale_x as f64,
-                        params.scale_y as f64,
-                    ) * kurbo::Affine::translate((
-                        -(self.region.x + self.region.width * params.pivot_x) as f64,
-                        -(self.region.y + self.region.height * params.pivot_y) as f64,
-                    )) * kurbo::Affine::translate((
-                        params.translate_x as f64,
-                        params.translate_y as f64,
-                    ));
-
-                    // Push transform layer
-                    scene.push_layer(BlendMode::default(), 1.0, transform, &rect);
-                    // Note: Caller must pop_layer after rendering content
-                }
-            }
-            EffectType::Clip => {
-                // Push clip layer
-                let rect = Rect::new(
-                    self.region.x as f64,
-                    self.region.y as f64,
-                    (self.region.x + self.region.width) as f64,
-                    (self.region.y + self.region.height) as f64,
-                );
-                scene.push_clip_layer(kurbo::Affine::IDENTITY, &rect);
-                // Note: Caller must pop_layer after rendering content
-            }
             EffectType::ColorAdjust => {
                 // Requires GPU compute - handled by CustomPaintSource
-                // This is a no-op in scene-native rendering
+            }
+            EffectType::Transform2D | EffectType::Clip => {
+                // Layer effects require scope handling via
+                // `Effect::begin_layer_scope` / `EffectScene::begin_layer_scope`.
+                // `apply_to_scene` is a no-op for these so the RAII guard
+                // is the only path that can push a layer — preventing the
+                // "caller must pop_layer" footgun the old API had.
             }
         }
     }
@@ -376,5 +457,24 @@ mod tests {
         assert_eq!(effect.region.y, 10.0);
         assert_eq!(effect.region.width, 200.0);
         assert_eq!(effect.region.height, 100.0);
+    }
+
+    #[test]
+    fn test_effect_one_shot_vs_layer_scope() {
+        let blur = Effect::blur(".blur", 10.0, 100, 100);
+        assert!(blur.is_one_shot());
+        assert!(!blur.is_layer_scope());
+
+        let transform = Effect::transform(".x", TransformParams::default(), 100, 100);
+        assert!(!transform.is_one_shot());
+        assert!(transform.is_layer_scope());
+
+        let clip = Effect::clip(Region::new(0.0, 0.0, 10.0, 10.0));
+        assert!(!clip.is_one_shot());
+        assert!(clip.is_layer_scope());
+
+        let color = Effect::color_adjust(".c", ColorAdjustParams::default());
+        assert!(color.is_one_shot());
+        assert!(!color.is_layer_scope());
     }
 }

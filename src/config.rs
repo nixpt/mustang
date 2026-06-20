@@ -32,8 +32,6 @@ pub struct MustangConfig {
     pub max_cache_size: usize,
     /// Enable debug visualization
     pub enable_debug: bool,
-    /// GPU device selection
-    pub gpu_device: Option<String>,
 }
 
 impl Default for MustangConfig {
@@ -43,7 +41,6 @@ impl Default for MustangConfig {
             enable_caching: true,
             max_cache_size: 1000,
             enable_debug: false,
-            gpu_device: None,
         }
     }
 }
@@ -75,12 +72,6 @@ impl MustangConfig {
     /// Enable/disable debug visualization
     pub fn enable_debug(mut self, enable: bool) -> Self {
         self.enable_debug = enable;
-        self
-    }
-
-    /// Set GPU device
-    pub fn gpu_device(mut self, device: &str) -> Self {
-        self.gpu_device = Some(device.to_string());
         self
     }
 

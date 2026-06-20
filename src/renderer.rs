@@ -9,26 +9,46 @@
 
 #![cfg(feature = "gpu")]
 
-use crate::effect::{ApplyEffect, Effect};
+use crate::effect::{ApplyEffect, Effect, LayerGuard};
 use anyrender::PaintScene;
-use vello::Scene;
 use std::sync::Arc;
+use vello::Scene;
 
 /// Extension trait for PaintScene to add Mustang effect support
 ///
 /// This allows any PaintScene implementation (including VelloScenePainter)
 /// to apply Mustang effects directly.
 pub trait EffectScene: PaintScene + Sized {
-    /// Apply a single effect to the scene
+    /// Apply a single one-shot effect (BackdropBlur, ColorAdjust) to the
+    /// scene. For layer effects (Transform, Clip), use `begin_layer_scope`
+    /// to obtain an RAII guard that pops the layer on drop.
     fn apply_effect(&mut self, effect: &Effect, viewport: (u32, u32)) {
+        debug_assert!(
+            !effect.is_layer_scope(),
+            "apply_effect called on a layer-scope effect ({:?}); use begin_layer_scope instead",
+            effect.effect_type,
+        );
         effect.apply_to_scene(self, viewport);
     }
 
-    /// Apply multiple effects to the scene
+    /// Apply multiple one-shot effects to the scene. Layer-scope effects
+    /// in the slice will be silently skipped (debug-asserted in dev builds).
     fn apply_effects(&mut self, effects: &[Effect], viewport: (u32, u32)) {
         for effect in effects {
             self.apply_effect(effect, viewport);
         }
+    }
+
+    /// Begin a layer scope for an effect (Transform, Clip). Returns
+    /// `Some(guard)` for layer effects and `None` for one-shot effects.
+    /// The guard pops the layer on drop; call `LayerGuard::release` to
+    /// opt out.
+    fn begin_layer_scope<'a>(
+        &'a mut self,
+        effect: &Effect,
+        viewport: (u32, u32),
+    ) -> Option<LayerGuard<'a, Self>> {
+        effect.begin_layer_scope(self, viewport)
     }
 }
 
