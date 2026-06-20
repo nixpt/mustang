@@ -93,69 +93,64 @@ fn effect_from_feature(
     }
 }
 
+fn extract_first_fn_args<'a>(value: &'a str, name: &str) -> Option<&'a str> {
+    let prefix = format!("{}(", name);
+    let start = value.find(&prefix)?;
+    let after = &value[start + prefix.len()..];
+    let end = after.find(')')?;
+    Some(&after[..end])
+}
+
 fn parse_blur_amount(value: &str) -> f32 {
-    // Extract blur amount from "backdrop-filter: blur(10px)" or similar
-    if let Some(start) = value.find("blur(") {
-        let after = &value[start + 5..];
-        if let Some(end) = after.find(')') {
-            let num_str = &after[..end];
-            // Remove 'px' suffix if present
-            let num = num_str.trim().trim_end_matches("px").trim();
-            return num.parse::<f32>().unwrap_or(10.0);
-        }
+    if let Some(args) = extract_first_fn_args(value, "blur") {
+        return args
+            .trim()
+            .trim_end_matches("px")
+            .parse::<f32>()
+            .unwrap_or(10.0);
     }
-    10.0 // Default blur amount
+    10.0
 }
 
 fn parse_transform(value: &str) -> TransformParams {
     let mut params = TransformParams::default();
 
-    // Parse scale(x), translate(x, y), rotate(deg)
-    if let Some(start) = value.find("scale(") {
-        let after = &value[start + 6..];
-        if let Some(end) = after.find(')') {
-            let scale_str = &after[..end];
-            if let Ok(scale) = scale_str.parse::<f32>() {
-                params.scale_x = scale;
-                params.scale_y = scale;
+    if let Some(args) = extract_first_fn_args(value, "scale") {
+        let parts: Vec<&str> = args.split(',').collect();
+        if let Some(x) = parts.first().and_then(|s| s.trim().parse::<f32>().ok()) {
+            params.scale_x = x;
+            if parts.len() == 1 {
+                params.scale_y = x;
             }
+        }
+        if let Some(y) = parts.get(1).and_then(|s| s.trim().parse::<f32>().ok()) {
+            params.scale_y = y;
         }
     }
 
-    if let Some(start) = value.find("translate(") {
-        let after = &value[start + 10..];
-        if let Some(end) = after.find(')') {
-            let parts: Vec<&str> = after[..end].split(',').collect();
-            if !parts.is_empty() {
-                let x = parts[0]
-                    .trim()
-                    .trim_end_matches("px")
-                    .parse::<f32>()
-                    .unwrap_or(0.0);
-                params.translate_x = x;
-            }
-            if parts.len() >= 2 {
-                let y = parts[1]
-                    .trim()
-                    .trim_end_matches("px")
-                    .parse::<f32>()
-                    .unwrap_or(0.0);
-                params.translate_y = y;
-            }
+    if let Some(args) = extract_first_fn_args(value, "translate") {
+        let parts: Vec<&str> = args.split(',').collect();
+        if let Some(x) = parts
+            .first()
+            .and_then(|s| s.trim().trim_end_matches("px").parse::<f32>().ok())
+        {
+            params.translate_x = x;
+        }
+        if let Some(y) = parts
+            .get(1)
+            .and_then(|s| s.trim().trim_end_matches("px").parse::<f32>().ok())
+        {
+            params.translate_y = y;
         }
     }
 
-    if let Some(start) = value.find("rotate(") {
-        let after = &value[start + 7..];
-        if let Some(end) = after.find(')') {
-            let rot_str = &after[..end];
-            let rot = rot_str
-                .trim()
-                .trim_end_matches("deg")
-                .parse::<f32>()
-                .unwrap_or(0.0);
-            params.rotate_degrees = rot;
-        }
+    if let Some(args) = extract_first_fn_args(value, "rotate") {
+        let deg = args
+            .trim()
+            .trim_end_matches("deg")
+            .parse::<f32>()
+            .unwrap_or(0.0);
+        params.rotate_degrees = deg;
     }
 
     params
@@ -164,16 +159,27 @@ fn parse_transform(value: &str) -> TransformParams {
 fn parse_color_adjust(value: &str) -> ColorAdjustParams {
     let mut params = ColorAdjustParams::default();
 
-    // Parse brightness(1.2), contrast(0.8), etc.
-    if let Some(start) = value.find("brightness(") {
-        let after = &value[start + 11..];
-        if let Some(end) = after.find(')') {
-            let brightness_str = &after[..end];
-            if let Ok(brightness) = brightness_str.parse::<f32>() {
-                params.red_multiplier = brightness;
-                params.green_multiplier = brightness;
-                params.blue_multiplier = brightness;
-            }
+    if let Some(args) = extract_first_fn_args(value, "brightness") {
+        if let Ok(b) = args.trim().parse::<f32>() {
+            params.red_multiplier = b;
+            params.green_multiplier = b;
+            params.blue_multiplier = b;
+        }
+    }
+
+    if let Some(args) = extract_first_fn_args(value, "contrast") {
+        if let Ok(c) = args.trim().parse::<f32>() {
+            params.red_multiplier *= c;
+            params.green_multiplier *= c;
+            params.blue_multiplier *= c;
+        }
+    }
+
+    if let Some(args) = extract_first_fn_args(value, "saturate") {
+        if let Ok(s) = args.trim().parse::<f32>() {
+            params.red_multiplier *= s;
+            params.green_multiplier *= s;
+            params.blue_multiplier *= s;
         }
     }
 
@@ -181,71 +187,92 @@ fn parse_color_adjust(value: &str) -> ColorAdjustParams {
 }
 
 fn parse_clip_region(_value: &str, viewport_width: u32, viewport_height: u32) -> Region {
-    // Default to full viewport if parsing fails
     Region::new(0.0, 0.0, viewport_width as f32, viewport_height as f32)
 }
 
-/// Configuration for the compositor
-#[derive(Debug, Clone)]
-pub struct CompositorConfig {
-    /// Maximum number of effects to apply per frame
-    pub max_effects: usize,
-    /// Enable GPU acceleration
-    pub gpu_enabled: bool,
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-impl Default for CompositorConfig {
-    fn default() -> Self {
-        Self {
-            max_effects: 64,
-            gpu_enabled: true,
-        }
-    }
-}
-
-/// Result of a compositing operation
-pub struct CompositeResult {
-    /// The composited buffer
-    pub buffer: Vec<u8>,
-}
-
-/// Buffer-based compositor for applying effects to raw pixel data
-pub struct Compositor {
-    #[allow(dead_code)]
-    config: CompositorConfig,
-}
-
-impl Compositor {
-    /// Create a new compositor with default configuration
-    pub fn new() -> Self {
-        Self {
-            config: CompositorConfig::default(),
-        }
+    #[test]
+    fn parse_transform_uniform_scale() {
+        let p = parse_transform("transform: scale(1.5)");
+        assert_eq!(p.scale_x, 1.5);
+        assert_eq!(p.scale_y, 1.5);
     }
 
-    /// Create a new compositor with custom configuration
-    pub fn with_config(config: CompositorConfig) -> Self {
-        Self { config }
+    #[test]
+    fn parse_transform_non_uniform_scale() {
+        let p = parse_transform("transform: scale(1.5, 0.8)");
+        assert_eq!(p.scale_x, 1.5);
+        assert_eq!(p.scale_y, 0.8);
     }
 
-    /// Apply effects to a raw pixel buffer
-    pub fn composite(
-        &mut self,
-        buffer: &[u8],
-        _width: u32,
-        _height: u32,
-        _effects: &[Effect],
-    ) -> anyhow::Result<CompositeResult> {
-        // For now, return the buffer unchanged
-        // Full implementation would apply effects to the pixel data
-        Ok(CompositeResult {
-            buffer: buffer.to_vec(),
-        })
+    #[test]
+    fn parse_transform_multi_function() {
+        let p = parse_transform("transform: scale(1.1) translate(10px, 20px) rotate(45deg)");
+        assert_eq!(p.scale_x, 1.1);
+        assert_eq!(p.scale_y, 1.1);
+        assert_eq!(p.translate_x, 10.0);
+        assert_eq!(p.translate_y, 20.0);
+        assert_eq!(p.rotate_degrees, 45.0);
     }
-}
 
-impl Default for Compositor {
-    fn default() -> Self {
-        Self::new()
+    #[test]
+    fn parse_transform_translate_x_only() {
+        let p = parse_transform("transform: translate(5px)");
+        assert_eq!(p.translate_x, 5.0);
+        assert_eq!(p.translate_y, 0.0);
+    }
+
+    #[test]
+    fn parse_transform_rotate_no_unit() {
+        let p = parse_transform("transform: rotate(30)");
+        assert_eq!(p.rotate_degrees, 30.0);
+    }
+
+    #[test]
+    fn parse_blur_with_px() {
+        assert_eq!(parse_blur_amount("backdrop-filter: blur(15px)"), 15.0);
+    }
+
+    #[test]
+    fn parse_blur_without_px() {
+        assert_eq!(parse_blur_amount("backdrop-filter: blur(15)"), 15.0);
+    }
+
+    #[test]
+    fn parse_blur_invalid_defaults_to_10() {
+        assert_eq!(parse_blur_amount("backdrop-filter: blur(abc)"), 10.0);
+    }
+
+    #[test]
+    fn parse_blur_missing_defaults_to_10() {
+        assert_eq!(parse_blur_amount("filter: brightness(1.2)"), 10.0);
+    }
+
+    #[test]
+    fn parse_color_brightness_only() {
+        let p = parse_color_adjust("filter: brightness(1.2)");
+        assert_eq!(p.red_multiplier, 1.2);
+        assert_eq!(p.green_multiplier, 1.2);
+        assert_eq!(p.blue_multiplier, 1.2);
+    }
+
+    #[test]
+    fn parse_color_brightness_and_contrast() {
+        let p = parse_color_adjust("filter: brightness(1.2) contrast(0.8)");
+        let expected = 1.2 * 0.8;
+        assert!((p.red_multiplier - expected).abs() < 1e-5);
+        assert!((p.green_multiplier - expected).abs() < 1e-5);
+        assert!((p.blue_multiplier - expected).abs() < 1e-5);
+    }
+
+    #[test]
+    fn parse_color_with_saturate() {
+        let p = parse_color_adjust("filter: brightness(1.0) saturate(1.5)");
+        assert_eq!(p.red_multiplier, 1.5);
+        assert_eq!(p.green_multiplier, 1.5);
+        assert_eq!(p.blue_multiplier, 1.5);
     }
 }

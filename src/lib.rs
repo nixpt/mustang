@@ -30,6 +30,9 @@ pub mod scheduler;
 pub use effect::{
     ApplyEffect, BlurParams, BlurQuality, ColorAdjustParams, Effect, EffectType, TransformParams,
 };
+
+#[cfg(feature = "gpu")]
+pub use effect::LayerGuard;
 // Re-export Region from compositor
 pub use animation::{
     AnimatedProperty, Animation, AnimationConfig, AnimationEngine, EasingFunction,
@@ -37,15 +40,11 @@ pub use animation::{
 pub use compositor::region::Region;
 pub use config::{MustangConfig, MustangMode};
 
-#[cfg(feature = "animation")]
-pub use animation::js_binding::JsAnimationRuntime;
-
 #[cfg(feature = "gpu")]
 pub use renderer::{
     EffectScene, MustangSceneBundle, VelloRendererOptions, VelloScenePainter, VelloWindowRenderer,
 };
 
-pub use compositor::*;
 pub use scheduler::SceneScheduler;
 
 use std::collections::HashMap;
@@ -72,7 +71,9 @@ impl SceneEffectResult {
 }
 
 // Re-export types from compositor for metadata integration
-pub use compositor::{FeatureType, SyntheticFeature};
+pub use compositor::{
+    FeatureType, SharedElementTracker, SyntheticFeature, TrackedElement, features_to_effects,
+};
 
 /// Trait for extracting effects from metadata
 ///
@@ -83,13 +84,21 @@ pub trait EffectMetadata {
     fn extract_features(&self) -> Vec<SyntheticFeature>;
 }
 
+/// Cache entry tracking effects + LRU access order
+#[derive(Debug, Clone)]
+struct CacheEntry {
+    effects: Vec<Effect>,
+    order: u64,
+}
+
 /// The Mustang GPU Compositor
 ///
 /// Transforms CSS synthetic effects into hardware-accelerated GPU operations.
 /// Works with any PaintScene implementation.
 pub struct MustangCompositor {
     config: MustangConfig,
-    effect_cache: HashMap<String, Vec<Effect>>,
+    effect_cache: HashMap<String, CacheEntry>,
+    next_order: u64,
 }
 
 impl MustangCompositor {
@@ -98,13 +107,18 @@ impl MustangCompositor {
         Self {
             config,
             effect_cache: HashMap::new(),
+            next_order: 0,
         }
     }
 
     /// Apply effects to a scene
     ///
-    /// This is the primary entry point for scene-native effect application.
-    /// Effects are applied in-order, with proper layer management.
+    /// One-shot effects (BackdropBlur, ColorAdjust) are applied in order.
+    /// Layer-scope effects (Transform, Clip) and effects that require GPU
+    /// compute are returned in `deferred_effects` — the caller can apply
+    /// layer-scope effects via `EffectScene::begin_layer_scope` (which
+    /// returns an RAII guard) and route GPU-compute effects to the
+    /// appropriate pipeline.
     #[cfg(feature = "gpu")]
     pub fn apply_scene_effects<S: anyrender::PaintScene>(
         &mut self,
@@ -116,12 +130,10 @@ impl MustangCompositor {
         let mut deferred = Vec::new();
 
         for effect in effects {
-            if effect.is_native() {
-                // Apply scene-native effect immediately
+            if effect.is_one_shot() {
                 effect.apply_to_scene(scene, viewport);
                 native_applied += 1;
             } else {
-                // Defer non-native effects for GPU processing
                 deferred.push(effect.clone());
             }
         }
@@ -157,19 +169,50 @@ impl MustangCompositor {
         self.config = config;
     }
 
-    /// Cache effects for a component
+    /// Cache effects for a component. Evicts the least-recently-used entry
+    /// when the cache is at `max_cache_size`. No-op when `enable_caching` is
+    /// false or `max_cache_size` is 0.
     pub fn cache_effects(&mut self, component_id: &str, effects: Vec<Effect>) {
-        self.effect_cache.insert(component_id.to_string(), effects);
+        if !self.config.enable_caching || self.config.max_cache_size == 0 {
+            return;
+        }
+        while self.effect_cache.len() >= self.config.max_cache_size {
+            match self.oldest_key() {
+                Some(key) => {
+                    self.effect_cache.remove(&key);
+                }
+                None => break,
+            }
+        }
+        let order = self.next_order;
+        self.next_order += 1;
+        self.effect_cache
+            .insert(component_id.to_string(), CacheEntry { effects, order });
     }
 
-    /// Get cached effects for a component
-    pub fn get_cached_effects(&self, component_id: &str) -> Option<&Vec<Effect>> {
-        self.effect_cache.get(component_id)
+    /// Get cached effects for a component. Bumps the entry to most-recently-used.
+    /// Returns None when `enable_caching` is false.
+    pub fn get_cached_effects(&mut self, component_id: &str) -> Option<&Vec<Effect>> {
+        if !self.config.enable_caching {
+            return None;
+        }
+        if let Some(entry) = self.effect_cache.get_mut(component_id) {
+            entry.order = self.next_order;
+            self.next_order += 1;
+        }
+        self.effect_cache.get(component_id).map(|e| &e.effects)
     }
 
     /// Clear effect cache
     pub fn clear_cache(&mut self) {
         self.effect_cache.clear();
+    }
+
+    fn oldest_key(&self) -> Option<String> {
+        self.effect_cache
+            .iter()
+            .min_by_key(|(_, e)| e.order)
+            .map(|(k, _)| k.clone())
     }
 
     /// Get performance statistics
@@ -223,6 +266,64 @@ mod tests {
 
         assert!(cached.is_some());
         assert_eq!(cached.unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_lru_eviction() {
+        let config = MustangConfig::new().max_cache_size(2);
+        let mut mustang = MustangCompositor::new(config);
+
+        mustang.cache_effects("a", vec![Effect::blur(".a", 1.0, 100, 100)]);
+        mustang.cache_effects("b", vec![Effect::blur(".b", 2.0, 100, 100)]);
+        mustang.cache_effects("c", vec![Effect::blur(".c", 3.0, 100, 100)]);
+
+        assert!(
+            mustang.get_cached_effects("a").is_none(),
+            "a should be evicted (oldest)"
+        );
+        assert!(mustang.get_cached_effects("b").is_some());
+        assert!(mustang.get_cached_effects("c").is_some());
+    }
+
+    #[test]
+    fn test_lru_access_bumps_order() {
+        let config = MustangConfig::new().max_cache_size(2);
+        let mut mustang = MustangCompositor::new(config);
+
+        mustang.cache_effects("a", vec![Effect::blur(".a", 1.0, 100, 100)]);
+        mustang.cache_effects("b", vec![Effect::blur(".b", 2.0, 100, 100)]);
+
+        let _ = mustang.get_cached_effects("a");
+
+        mustang.cache_effects("c", vec![Effect::blur(".c", 3.0, 100, 100)]);
+
+        assert!(
+            mustang.get_cached_effects("a").is_some(),
+            "a was accessed, should survive"
+        );
+        assert!(
+            mustang.get_cached_effects("b").is_none(),
+            "b is now oldest, should be evicted"
+        );
+        assert!(mustang.get_cached_effects("c").is_some());
+    }
+
+    #[test]
+    fn test_caching_disabled() {
+        let config = MustangConfig::new().enable_caching(false);
+        let mut mustang = MustangCompositor::new(config);
+
+        mustang.cache_effects("a", vec![Effect::blur(".a", 1.0, 100, 100)]);
+        assert!(mustang.get_cached_effects("a").is_none());
+    }
+
+    #[test]
+    fn test_cache_size_zero() {
+        let config = MustangConfig::new().max_cache_size(0);
+        let mut mustang = MustangCompositor::new(config);
+
+        mustang.cache_effects("a", vec![Effect::blur(".a", 1.0, 100, 100)]);
+        assert!(mustang.get_cached_effects("a").is_none());
     }
 
     #[test]

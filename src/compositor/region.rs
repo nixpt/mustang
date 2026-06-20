@@ -1,5 +1,15 @@
 //! Region types for Mustang
 //!
+//! `Region` is an f32-typed screen-space rectangle. The `gpu` feature
+//! provides `to_rect` / `from_rect` conversions to `kurbo::Rect` (f64)
+//! for Vello interop. `Region` stays distinct from `kurbo::Rect` for
+//! two reasons: (a) the public mustang API uses f32 for screen coords
+//! throughout (matches `TransformParams`, `ColorAdjustParams`, etc.),
+//! and (b) the field names differ — `x`/`y`/`width`/`height` vs
+//! `x0`/`y0`/`x1`/`y1`. A type alias would be a breaking change for
+//! either the field set or the f32 type, so the explicit conversions
+//! are the right trade-off for now.
+//!
 //! Copyright (c) 2026 The Exosphere Authors
 //!
 //! Dual-licensed under MIT or Apache-2.0.
