@@ -45,7 +45,6 @@ pub use renderer::{
     EffectScene, MustangSceneBundle, VelloRendererOptions, VelloScenePainter, VelloWindowRenderer,
 };
 
-pub use compositor::*;
 pub use scheduler::SceneScheduler;
 
 use std::collections::HashMap;
@@ -72,7 +71,9 @@ impl SceneEffectResult {
 }
 
 // Re-export types from compositor for metadata integration
-pub use compositor::{FeatureType, SyntheticFeature};
+pub use compositor::{
+    FeatureType, SharedElementTracker, SyntheticFeature, TrackedElement, features_to_effects,
+};
 
 /// Trait for extracting effects from metadata
 ///
