@@ -115,6 +115,30 @@ impl Default for TransformParams {
     }
 }
 
+#[cfg(feature = "gpu")]
+impl TransformParams {
+    /// Construct from a `kurbo::Affine`. Decomposes the Affine into
+    /// scale + rotate + translate. **Skew is not supported** — Affines
+    /// with non-zero shear are approximated to the closest
+    /// scale+rotate+translate form (the `TransformParams` shape cannot
+    /// represent shear). Pivot defaults to the center (0.5, 0.5).
+    pub fn from_affine(affine: kurbo::Affine) -> Self {
+        let c = affine.as_coeffs();
+        let scale_x = (c[0] * c[0] + c[1] * c[1]).sqrt();
+        let scale_y = (c[2] * c[2] + c[3] * c[3]).sqrt();
+        let rotate_degrees = c[1].atan2(c[0]).to_degrees() as f32;
+        Self {
+            scale_x: scale_x as f32,
+            scale_y: scale_y as f32,
+            translate_x: c[4] as f32,
+            translate_y: c[5] as f32,
+            rotate_degrees,
+            pivot_x: 0.5,
+            pivot_y: 0.5,
+        }
+    }
+}
+
 /// z-index assigned to `Clip` effects so they always render on top
 /// of any other effect applied to the same region.
 pub const CLIP_Z_INDEX: i32 = 9999;
@@ -168,6 +192,28 @@ impl Effect {
             effect_type: EffectType::Transform2D,
             selector: selector.to_string(),
             region: Region::new(0.0, 0.0, viewport_width as f32, viewport_height as f32),
+            blur_params: None,
+            transform_params: Some(params),
+            color_params: None,
+            z_index: 0,
+        }
+    }
+
+    /// Create a transform effect from a `kurbo::Affine`. Convenience
+    /// for the common Vello use case where the caller already has an
+    /// Affine and doesn't want to decompose it manually. Skew is
+    /// approximated away; see [`TransformParams::from_affine`].
+    #[cfg(feature = "gpu")]
+    pub fn transform_with_affine(
+        selector: &str,
+        affine: kurbo::Affine,
+        region: Region,
+    ) -> Self {
+        let params = TransformParams::from_affine(affine);
+        Self {
+            effect_type: EffectType::Transform2D,
+            selector: selector.to_string(),
+            region,
             blur_params: None,
             transform_params: Some(params),
             color_params: None,
@@ -481,5 +527,63 @@ mod tests {
         let color = Effect::color_adjust(".c", ColorAdjustParams::default());
         assert!(color.is_one_shot());
         assert!(!color.is_layer_scope());
+    }
+
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn test_transform_params_from_identity_affine() {
+        let p = TransformParams::from_affine(kurbo::Affine::IDENTITY);
+        assert_eq!(p.scale_x, 1.0);
+        assert_eq!(p.scale_y, 1.0);
+        assert_eq!(p.translate_x, 0.0);
+        assert_eq!(p.translate_y, 0.0);
+        assert_eq!(p.rotate_degrees, 0.0);
+    }
+
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn test_transform_params_from_translation() {
+        let p = TransformParams::from_affine(kurbo::Affine::translate((10.0, 20.0)));
+        assert_eq!(p.scale_x, 1.0);
+        assert_eq!(p.scale_y, 1.0);
+        assert_eq!(p.translate_x, 10.0);
+        assert_eq!(p.translate_y, 20.0);
+        assert_eq!(p.rotate_degrees, 0.0);
+    }
+
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn test_transform_params_from_scale() {
+        let p = TransformParams::from_affine(kurbo::Affine::scale(2.0));
+        assert_eq!(p.scale_x, 2.0);
+        assert_eq!(p.scale_y, 2.0);
+        assert_eq!(p.translate_x, 0.0);
+        assert_eq!(p.translate_y, 0.0);
+    }
+
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn test_transform_params_from_rotation() {
+        let p = TransformParams::from_affine(kurbo::Affine::rotate(std::f64::consts::FRAC_PI_4));
+        assert!((p.rotate_degrees - 45.0).abs() < 1e-3, "got {}", p.rotate_degrees);
+        assert!((p.scale_x - 1.0).abs() < 1e-6);
+        assert!((p.scale_y - 1.0).abs() < 1e-6);
+    }
+
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn test_transform_with_affine_constructor() {
+        let affine = kurbo::Affine::translate((5.0, 10.0));
+        let effect = Effect::transform_with_affine(
+            ".x",
+            affine,
+            Region::new(0.0, 0.0, 100.0, 100.0),
+        );
+        assert!(matches!(effect.effect_type, EffectType::Transform2D));
+        let params = effect.transform_params.expect("transform_params set");
+        assert_eq!(params.translate_x, 5.0);
+        assert_eq!(params.translate_y, 10.0);
+        assert_eq!(effect.region.x, 0.0);
+        assert_eq!(effect.region.width, 100.0);
     }
 }
