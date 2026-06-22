@@ -219,9 +219,11 @@ fn parse_clip_region(_value: &str, viewport_width: u32, viewport_height: u32) ->
 /// (`filter: brightness(1.2) contrast(0.8)`) are decomposed by the caller
 /// into multiple SyntheticFeature entries so each op becomes its own Effect.
 fn parse_canonical_filter(value: &str) -> Option<CanonicalFilter> {
-    // (function-name, ctor). Hue-rotate is first so the parse does not
-    // accidentally match e.g. `rotate(` (no such function exists, but
-    // defensive ordering keeps the lookup bounded).
+    // (function-name, ctor) — hue-rotate is listed first decoratively,
+    // matching the CSS Filter Effects spec column ordering. No `rotate(`
+    // function exists in this array (and no other function follows a
+    // substring of hue-rotate), so the priority does not protect against
+    // substring matches; it is purely cosmetic.
     const FILTERS: &[(&str, fn(f32) -> CanonicalFilter)] = &[
         ("hue-rotate(", |d| CanonicalFilter::HueRotate(d)),
         ("saturate(", |a| CanonicalFilter::Saturate(a)),
