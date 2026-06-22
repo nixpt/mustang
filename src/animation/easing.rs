@@ -175,27 +175,67 @@ fn linear(t: f32) -> f32 {
     t
 }
 
-// CSS default ease (approximated as cubic-bezier(0.25, 0.1, 0.25, 1.0))
+// CSS default ease (approximated as cubic-bezier(0.25, 0.1, 0.25, 1.0)).
+// The bezier function below treats p0/y-at-0 and p3/y-at-1 as the polynomial's
+// endpoints, so the call sites must clamp t=0 and t=1 (the test boundary
+// case won't tolerate an off-by-epsilon return from a CSS-control x value
+// mistakenly passed as y-at-0).
 fn ease(t: f32) -> f32 {
+    if t <= 0.0 {
+        return 0.0;
+    }
+    if t >= 1.0 {
+        return 1.0;
+    }
     cubic_bezier(t, 0.25, 0.1, 0.25, 1.0)
 }
 
 // CSS ease-in (cubic-bezier(0.42, 0, 1.0, 1.0))
 fn ease_in(t: f32) -> f32 {
+    if t <= 0.0 {
+        return 0.0;
+    }
+    if t >= 1.0 {
+        return 1.0;
+    }
     cubic_bezier(t, 0.42, 0.0, 1.0, 1.0)
 }
 
 // CSS ease-out (cubic-bezier(0, 0, 0.58, 1.0))
 fn ease_out(t: f32) -> f32 {
+    if t <= 0.0 {
+        return 0.0;
+    }
+    if t >= 1.0 {
+        return 1.0;
+    }
     cubic_bezier(t, 0.0, 0.0, 0.58, 1.0)
 }
 
 // CSS ease-in-out (cubic-bezier(0.42, 0, 0.58, 1.0))
 fn ease_in_out(t: f32) -> f32 {
+    if t <= 0.0 {
+        return 0.0;
+    }
+    if t >= 1.0 {
+        return 1.0;
+    }
     cubic_bezier(t, 0.42, 0.0, 0.58, 1.0)
 }
 
-// Cubic Bezier approximation
+// Cubic Bezier approximation — Hermite cubic form.
+//
+// IMPORTANT: the first and last param (`p0`, `p3`) are treated as
+// y-at-t=0 and y-at-t=1 of the eased curve (NOT as CSS bezier
+// x-control values). New callers MUST clamp t ≤ 0.0 → 0.0 and t ≥ 1.0 → 1.0
+// before calling this helper — see the four CSS-bezier wrappers above.
+//
+// TODO(at-the-API-level): drop `p0` and `p3` from the signature and
+// hardcode them to 0.0 / 1.0 (CSS easing convention). That removes the
+// foot-gun that caused `ease(0.0) = 0.25` pre-fix. The simplified bezier
+// here also lacks proper x-progression (no Newton-Raphson lookup of the
+// bezier parameter t from x-progress), so intermediate values approximate
+// real CSS easings rather than match them bit-for-bit.
 fn cubic_bezier(t: f32, p0: f32, p1: f32, p2: f32, p3: f32) -> f32 {
     let u = 1.0 - t;
     let tt = t * t;

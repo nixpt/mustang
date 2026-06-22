@@ -392,9 +392,16 @@ impl AnimationEngine {
         }
     }
 
-    /// Get count of active (non-completed) animations
+    /// Count of RUNNING animations. Pending/queued and Completed/Cancelled
+    /// animations are NOT counted. Note: `cleanup()` retains non-complete
+    /// animations (Pending + Running), so the engine may hold pending
+    /// animations that aren't reflected in `active_count`.
+    /// Matches `AnimationEngine::test_animation_engine`'s "Not started yet" assertion.
     pub fn active_count(&self) -> usize {
-        self.animations.iter().filter(|a| !a.is_complete()).count()
+        self.animations
+            .iter()
+            .filter(|a| matches!(a.state, AnimationState::Running))
+            .count()
     }
 
     /// Clear all completed animations
