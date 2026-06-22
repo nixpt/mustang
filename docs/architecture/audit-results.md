@@ -194,13 +194,23 @@ for pat in taffy taffy_geom parley font-kit html5ever markup5ever \
 done
 ```
 
-A canonical reproduction helper is *being authored* at
-`scripts/check-boundaries.sh` (working-tree at audit time: file present
-on disk under `/workspace/projects/mustang/scripts/` but not yet
-committed to git history). It performs the same audits as the
-inline shell loop below, with exit-code-gated categories for pre-merge
-use. Verify landed commit state with `git log --follow scripts/check-boundaries.sh`
-before relying on it as the canonical repro tool.
+A canonical reproduction helper lives at `scripts/check-boundaries.sh`
+(committed as part of the audit-time cleanup — the file was working-tree
+only at audit time itself, before this cleanup). It performs the same
+audits as the inline shell loop above, with exit-code-gated categories
+for pre-merge use. Each entry in the script's CATEGORIES array is a
+3-tuple `<category>:exact|<prefix>:<pattern>` — `exact` matches the
+literal `pattern <version>` shape only; `prefix` matches anything
+starting with `pattern` (used for umbrella catches like the full
+`dioxus-*` / `dioxus_*` crate family). It is the canonical reproduction
+tool post-cleanup; verify landed state with
+`git log -- scripts/check-boundaries.sh`. Note: re-running the script
+post-cleanup reproduces this audit's per-boundary verdicts under the
+same `[features]` block resolution — but upstream crate-graph changes
+(e.g., a new `vello` or `wgpu` release pulling in a prohibited-crate-named
+helper transitively) could shift the `cargo tree` row count. Re-run after
+any `[features]` block or direct-dep change rather than relying on a
+fixed row count from this audit.
 
 ---
 
@@ -233,3 +243,12 @@ historical comparison.
   boundaries + CSS auxiliary). Compile HOLDS under default + `--features
   gpu`; STALE under `--features full` (E0432 at `src/lib.rs:41`,
   deferred from s306 commit `853e72b`).
+- **2026-06-22T02:44:45Z** (cleanup PR) — `scripts/check-boundaries.sh` landed
+  (was working-tree only at audit time); CATEGORIES block expanded
+  with explicit `<category>:<kind>:<pattern>` (3-tuple) encoding for
+  editor-safe semantics; `dom:prefix:dioxus-` / `dom:prefix:dioxus_`
+  umbrella entries now catch the full `dioxus-*` crate family;
+  `dom:exact:font-kit` and `layout:exact:taffy_geom` added to bring
+  CONTENTS and script into parity. No re-audit performed; per-boundary
+  verdicts of the initial run are unchanged because the source tree
+  did not move between the audit run and this cleanup commit.
