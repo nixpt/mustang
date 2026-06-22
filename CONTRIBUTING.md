@@ -41,11 +41,16 @@ grep-matches each prohibited crate name (one per boundary), and exits non-zero
 with a remediation hint on any violation. It runs in seconds on a warm cache
 and is the machine-runnable form of the four-fold test.
 
-> **Note on CI integration.** This repo has no `.github/` infrastructure yet,
-> so CI gating on the boundary check is a deliberate non-goal for this PR. The
-> script + reviewer reading the four-fold test = the current enforcement
-> layer. Wiring `boundary-check` into a GitHub Actions workflow is a natural
-> follow-up — see "Next steps" at the bottom of this file.
+> **Note on CI integration.** This is now wired — see the
+> `.github/workflows/boundary-check.yml` workflow. Every push to `main` and
+> every PR runs `./scripts/check-boundaries.sh` + the three Cargo-check
+> feature gates (default / gpu / full) + the blur-example regression test
+> (`cargo test --features gpu --examples blur`) + the `--features full`
+> test suite. The script + the GHA workflow + a reviewer reading the
+> four-fold test = the operational enforcement layer. The empirical
+> baseline as of `2026-06-22T02:59:20Z` (the freshest cadence-row in
+> `docs/architecture/audit-results.md`) is that all four gates pass on
+> `main`; the workflow is the machine-runnable mirror of that baseline.
 
 ## Operating environment
 
@@ -137,10 +142,18 @@ and **Apache-2.0**, matching the rest of the repo.
 
 ## Next steps (not blocking this PR)
 
-- **CI workflow** at `.github/workflows/boundary-check.yml` running
-  `scripts/check-boundaries.sh` on every PR — blocked on this repo gaining
-  `.github/` infrastructure in general.
+- ✅ **(done)** **CI workflow** at `.github/workflows/boundary-check.yml`
+  running `./scripts/check-boundaries.sh` + the three Cargo-check feature
+  gates (default / gpu / full) + the blur-example regression test + the
+  `--features full` test suite on every push to `main` and every PR. The
+  `.github/` infrastructure was bootstrapped in this commit; the workflow
+  is the machine-runnable mirror of the cadence table in
+  `docs/architecture/audit-results.md`.
 - **Mirror CONTRIBUTING.md → arniko / bliss-engine** with the reciprocal
   "what THIS repo IS, not IS-NOT" framing from each sibling's perspective.
 - **`cargo-deny`** integration as a heavier-weight alternative to the
   bash-script grep if/when the prohibited-crate list grows beyond ~6 names.
+- **Published-crate CI**: once the repo is published to crates.io as
+  `arniko-mustang`, consider a periodic CI run against the published
+  tarball to detect drift between repo source and published artifact
+  (the current workflow gates only the repo source).

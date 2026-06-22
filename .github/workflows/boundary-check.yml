@@ -1,0 +1,190 @@
+# Boundary Check — four-fold boundary doctrine + compile/test gates.
+#
+# Bootstrap of `.github/workflows/` for mustang (no `.github/` infrastructure
+# existed in this repo prior to this commit — the only enforcement layer for
+# the four-fold Boundary Doctrine was the local `./scripts/check-boundaries.sh`
+# script + a reviewer reading CONTRIBUTING.md ## The four-fold test).
+#
+# What this workflow gates:
+#   1. The pre-merge boundary gate (`scripts/check-boundaries.sh`) — bash 4+
+#      (associative arrays / `declare -a`). Ubuntu-latest runners ship bash 5+,
+#      so the bash-4+ requirement is satisfied natively. Exit codes: 0 clean,
+#      1 violation, 2 preflight failure — both non-zero codes block the PR.
+#   2. The three Cargo-check feature-gates (default / gpu / full) — mirrors
+#      the three rows in the Operational cadence table of
+#      `docs/architecture/audit-results.md`.
+#   3. The blur-example regression test (`cargo test --features gpu
+#      --examples blur`) — see CONTRIBUTING.md ## Dev workflow + README ##
+#      Boundary Doctrine; the blur example is the operational demonstration
+#      of the boundary doctrine.
+#   4. The full-feature test suite (`cargo test --features full`) — catches
+#      animation-feature + doc-test regressions.
+#
+# The empirical baseline as of 2026-06-22T02:59:20Z (final cadence-row in
+# `docs/architecture/audit-results.md`) is that all four gates pass on main;
+# this workflow is the machine-runnable mirror of that empirical baseline.
+#
+# Doctrinal reference: CONTRIBUTING.md ## The four-fold test +
+# README.md ## Boundary Doctrine +
+# docs/architecture/audit-results.md (cadence-run evidence).
+
+name: Boundary Check (four-fold + compile/test gates)
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+    # Only run on PR events that have a final SHA. Avoid running on
+    # `closed` (PR already merged / abandoned — historical non-blocking).
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+# Cancel superseded in-progress runs on PR pushes so rapid `git push`es
+# don't queue. Push-to-main is sequential (no cancel-in-progress), because
+# main-push runs feed the audit cadence table.
+#
+# Group key MUST use `pull_request.number` (stable across PR synchronizes),
+# not just `github.ref` (which is the merge-commit ref and changes per
+# push, defeating cancel-in-progress). Falls back to `github.ref` for
+# push / workflow_dispatch events where `pull_request` is null.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Minimal permissions: the script does not push back, no secrets required,
+# no PR-comment writes. `contents: read` is enough to checkout + read files.
+permissions:
+  contents: read
+
+jobs:
+  boundary-check:
+    name: Verify Boundaries and Compile/Test Gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CARGO_TERM_COLOR: never
+      RUST_BACKTRACE: 1
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install pinned Rust toolchain
+        # Cargo.toml pins rust-version = "1.85.0" — match it explicitly so
+        # a Cargo.toml-version bump doesn't silently drift this workflow.
+        # Ubuntu-latest runners ship bash 5+, satisfying the bash-4+
+        # requirement in `scripts/check-boundaries.sh`.
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.85.0
+          components: rustfmt, clippy
+
+      - name: Cache cargo build artifacts
+        # Shared across the four compile/test steps below (saves ~2-4 min
+        # on cold cache for the no-gpu default + gpu + full feature combination).
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ runner.os }}-mustang-v0
+          cache-on-failure: true
+
+      - name: Document the gate scope
+        # Emits the four-fold test matrix into the run log so the run page
+        # is self-describing without needing the audit-results.md link.
+        run: |
+          set -euo pipefail
+          echo "== four-fold boundary doctrine (mustang) =="
+          echo "  1. No layout       — prohibited: taffy, taffy_geom"
+          echo "  2. No text shaping — prohibited: parley, font-kit"
+          echo "  3. No DOM          — prohibited: bliss-dom, dioxus (any dioxus-* crate)"
+          echo "  4. No HTML parsing — prohibited: html5ever, markup5ever"
+          echo ""
+          echo "== compile/test gates =="
+          echo "  A. cargo check                  (default features)"
+          echo "  B. cargo check --features gpu   (gpu features)"
+          echo "  C. cargo check --features full  (gpu + animation features)"
+          echo "  D. cargo test --features gpu --examples blur  (boundary-doctrine regression)"
+          echo "  E. cargo test --features full   (full-feature + doc tests)"
+          echo ""
+          echo "Reference: docs/architecture/audit-results.md (Operational cadence table)"
+
+      - name: Pre-merge boundary gate (the four-fold test)
+        # Exits 0 clean / 1 violation / 2 preflight failure. Both non-zero
+        # exit codes block the PR — see CONTRIBUTING.md ## The four-fold test
+        # for the canonical four-fold test questions.
+        id: boundary-gate
+        run: |
+          set -euo pipefail
+          chmod +x ./scripts/check-boundaries.sh
+          ./scripts/check-boundaries.sh
+
+      - name: Compile-side gates — default features
+        id: check-default
+        run: |
+          set -euo pipefail
+          cargo check --message-format=short
+
+      - name: Compile-side gates — gpu features
+        id: check-gpu
+        run: |
+          set -euo pipefail
+          cargo check --features gpu --message-format=short
+
+      - name: Compile-side gates — full features (gpu + animation)
+        # The s306 src/lib.rs:41 E0432 carve-out (`2ff4d1b`) flipped this row
+        # from FAIL to PASS; if it ever flips back to FAIL on main, the audit
+        # cadence row should be re-recorded + the carve-out re-examined. See
+        # docs/architecture/audit-results.md ## Operational cadence table.
+        id: check-full
+        run: |
+          set -euo pipefail
+          cargo check --features full --message-format=short
+
+      - name: Boundary-doctrine regression — blur example
+        # `cargo test --features gpu --examples blur` is the operational
+        # demonstration of the boundary doctrine (CONTRIBUTING.md ## Dev
+        # workflow step 3; README ## Boundary Doctrine). If the prologue
+        # assertion at the blur example doc-comment is lost, this fails.
+        id: test-blur
+        run: |
+          set -euo pipefail
+          cargo test --features gpu --examples blur
+
+      - name: Full-feature test suite + doc tests
+        # Catches animation-feature regressions (the s306-deferred
+        # `animation::js_binding` carve-out stays commented-out, but
+        # `animation::easing` + `animation::AnimationEngine` are exercised).
+        id: test-full
+        run: |
+          set -euo pipefail
+          cargo test --features full
+
+      - name: Result summary
+        # Posts a one-screen summary to the GitHub Actions run page.
+        # Both the gate names and the bounded remediation paths are
+        # surfaced so a failing PR points the contributor at the right
+        # doc without requiring battle-scars.
+        if: always()
+        run: |
+          {
+            echo "## Boundary Check Result"
+            echo ""
+            echo "| Gate | Status |"
+            echo "|---|---|"
+            echo "| boundary-gate (four-fold test) | **${{ steps.boundary-gate.outcome }}** |"
+            echo "| check-default                  | **${{ steps.check-default.outcome }}** |"
+            echo "| check-gpu                      | **${{ steps.check-gpu.outcome }}** |"
+            echo "| check-full                     | **${{ steps.check-full.outcome }}** |"
+            echo "| test-blur  (boundary regression) | **${{ steps.test-blur.outcome }}** |"
+            echo "| test-full  (full-feature suite)  | **${{ steps.test-full.outcome }}** |"
+            echo ""
+            if [ "${{ job.status }}" = "success" ]; then
+              echo "✅ All four boundaries hold; all compile gates PASS; all tests PASS."
+            else
+              echo "❌ One or more gates failed. Common remediations:"
+              echo ""
+              echo "  • **boundary-gate violation**: pull the violating crate out of mustang's dep tree. Remediation paths listed in CONTRIBUTING.md ## The four-fold test."
+              echo "  • **compile-gate failure**: re-run the 3-gate cadence locally per `docs/architecture/audit-results.md ## Operational cadence table` + the procedure in `DOCS/architecture/`."
+              echo "  • **test-blur failure**: the boundary-doctrine example's prologue walkthrough assertion was lost — see CONTRIBUTING.md ## Dev workflow step 3."
+              echo "  • **test-full failure**: an animation-feature regression slipped in — re-check `src/animation/` + `src/lib.rs` for unintended `boa_engine` / `icu_normalizer` re-resolution (the s306 carve-out is at `src/animation/mod.rs:9-15` + `src/lib.rs:37-46`)."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
