@@ -28,7 +28,8 @@ pub mod scheduler;
 
 // Re-export main types from effect module
 pub use effect::{
-    ApplyEffect, BlurParams, BlurQuality, ColorAdjustParams, Effect, EffectType, TransformParams,
+    ApplyEffect, BlurParams, BlurQuality, CanonicalFilter, ColorAdjustParams, DropShadowParams,
+    Effect, EffectType, TransformParams,
 };
 // Re-export Region from compositor
 pub use animation::{

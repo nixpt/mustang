@@ -101,8 +101,22 @@ invoke it with explicit region metadata.
 - Internal only? Don't re-export.
 - Adding a new effect kind? File it under `src/effect.rs` (the `Effect` enum
   or its supporting enums) and the corresponding docs-`## Boundary Doctrine`
-  entry if the effect introduces a NEW category (so far none have — blur,
-  transform, and color-adjust are already covered).
+  entry if the effect introduces a NEW category.
+
+  The `Effect` enum + `EffectType` discriminator already covers the canonical
+  CSS visual surface mustang ships:
+
+  - **Scene-native (Vello scene-side):** `BackdropBlur` (`filter: blur`),
+    `Transform2D` (`transform: scale/translate/rotate`), `Clip`
+    (`clip-path` security gate), `DropShadow` (`box-shadow` /
+    `filter: drop-shadow`).
+  - **Deferred to GPU compute (CustomPaintSource path):** `ColorAdjust`
+    (multipliers + offsets), `CanonicalFilter` (`hue-rotate`, `saturate`,
+    `brightness`, `contrast`, `grayscale`, `invert`).
+
+  Categories covered as of s1+a: blur, transform, color-adjust, drop-shadow,
+  and the canonical CSS filter set. Additions outside this set must not
+  cross the four boundaries above.
 
 ## Architectural provenance
 

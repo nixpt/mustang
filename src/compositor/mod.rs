@@ -12,7 +12,8 @@ pub mod region;
 
 // Re-export main types from effect (which re-exports from mustang)
 pub use crate::effect::{
-    BlurParams, BlurQuality, ColorAdjustParams, Effect, EffectType, TransformParams,
+    BlurParams, BlurQuality, CanonicalFilter, ColorAdjustParams, DropShadowParams, Effect,
+    EffectType, TransformParams,
 };
 // Re-export Region from local region module
 pub use region::Region;
@@ -51,6 +52,11 @@ pub enum FeatureType {
     Transform,
     ColorAdjust,
     Clip,
+    /// CSS `filter: <op>(<amt>)` — canonical op (see
+    /// [`CanonicalFilter`]). One op per SyntheticFeature; CSS
+    /// filter chains are emitted as multiple entries with
+    /// identical selectors.
+    CanonicalFilter,
 }
 
 fn effect_from_feature(
@@ -89,6 +95,22 @@ fn effect_from_feature(
             let region =
                 parse_clip_region(&feature.original_value, viewport_width, viewport_height);
             Some(Effect::clip(region))
+        }
+        FeatureType::CanonicalFilter => {
+            // Parse `filter: <hue-rotate|saturate|brightness|contrast|grayscale|invert>(<amt>)`.
+            // Chain detection (`filter: brightness(1.2) contrast(0.8)`) is a
+            // single-op-per-effect model: the downstream consumer emits
+            // multiple SyntheticFeature entries with FeatureType::CanonicalFilter
+            // and identical selectors, so each op commits/replays atomically.
+            match parse_canonical_filter(&feature.original_value) {
+                Some(filter) => Some(Effect::canonical_filter(
+                    &feature.selector,
+                    filter,
+                    viewport_width,
+                    viewport_height,
+                )),
+                None => None,
+            }
         }
     }
 }
@@ -183,6 +205,137 @@ fn parse_color_adjust(value: &str) -> ColorAdjustParams {
 fn parse_clip_region(_value: &str, viewport_width: u32, viewport_height: u32) -> Region {
     // Default to full viewport if parsing fails
     Region::new(0.0, 0.0, viewport_width as f32, viewport_height as f32)
+}
+
+/// Parse one canonical CSS filter op into a `CanonicalFilter`.
+///
+/// Supports the six canonical CSS filter functions from the Filter Effects
+/// spec (https://drafts.fxtf.org/filter-effects/): `hue-rotate`, `saturate`,
+/// `brightness`, `contrast`, `grayscale`, `invert`. Returns `None` if the
+/// input string does not match any of those function names OR if the
+/// numeric argument fails to parse.
+///
+/// The result is a single op; CSS filter chains
+/// (`filter: brightness(1.2) contrast(0.8)`) are decomposed by the caller
+/// into multiple SyntheticFeature entries so each op becomes its own Effect.
+fn parse_canonical_filter(value: &str) -> Option<CanonicalFilter> {
+    // (function-name, ctor). Hue-rotate is first so the parse does not
+    // accidentally match e.g. `rotate(` (no such function exists, but
+    // defensive ordering keeps the lookup bounded).
+    const FILTERS: &[(&str, fn(f32) -> CanonicalFilter)] = &[
+        ("hue-rotate(", |d| CanonicalFilter::HueRotate(d)),
+        ("saturate(", |a| CanonicalFilter::Saturate(a)),
+        ("brightness(", |a| CanonicalFilter::Brightness(a)),
+        ("contrast(", |a| CanonicalFilter::Contrast(a)),
+        ("grayscale(", |a| CanonicalFilter::Grayscale(a)),
+        ("invert(", |a| CanonicalFilter::Invert(a)),
+    ];
+    for (name, ctor) in FILTERS {
+        if let Some(start) = value.find(name) {
+            let after = &value[start + name.len()..];
+            if let Some(end) = after.find(')') {
+                // Strip the trailing `deg` suffix (only meaningful for
+                // hue-rotate; ignored for the others, which are unitless).
+                let amt_str = after[..end].trim().trim_end_matches("deg").trim();
+                if let Ok(amt) = amt_str.parse::<f32>() {
+                    return Some(ctor(amt));
+                }
+                return None;
+            }
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_canonical_filter_hue_rotate() {
+        assert_eq!(
+            parse_canonical_filter("hue-rotate(45deg)"),
+            Some(CanonicalFilter::HueRotate(45.0))
+        );
+    }
+
+    #[test]
+    fn test_parse_canonical_filter_unit_ops() {
+        assert_eq!(
+            parse_canonical_filter("brightness(1.2)"),
+            Some(CanonicalFilter::Brightness(1.2))
+        );
+        assert_eq!(
+            parse_canonical_filter("saturate(0.5)"),
+            Some(CanonicalFilter::Saturate(0.5))
+        );
+        assert_eq!(
+            parse_canonical_filter("contrast(0.8)"),
+            Some(CanonicalFilter::Contrast(0.8))
+        );
+        assert_eq!(
+            parse_canonical_filter("grayscale(1.0)"),
+            Some(CanonicalFilter::Grayscale(1.0))
+        );
+        assert_eq!(
+            parse_canonical_filter("invert(0.5)"),
+            Some(CanonicalFilter::Invert(0.5))
+        );
+    }
+
+    #[test]
+    fn test_parse_canonical_filter_negative_amounts() {
+        // CSS spec allows negative hue-rotate degrees (rotate the other way)
+        // and the parser does not bound brightness/contrast (the GPU compute
+        // path clamps via the Filter Effects spec). The parser forwards the
+        // parsed value as-is.
+        assert_eq!(
+            parse_canonical_filter("hue-rotate(-30deg)"),
+            Some(CanonicalFilter::HueRotate(-30.0))
+        );
+        assert_eq!(
+            parse_canonical_filter("brightness(-0.2)"),
+            Some(CanonicalFilter::Brightness(-0.2))
+        );
+    }
+
+    #[test]
+    fn test_parse_canonical_filter_unsupported_returns_none() {
+        // CSS filter functions not in the canonical set (sepia, opacity,
+        // drop-shadow, blur) are not routed through CanonicalFilter.
+        assert_eq!(parse_canonical_filter("sepia(1.0)"), None);
+        assert_eq!(parse_canonical_filter("opacity(0.5)"), None);
+        assert_eq!(parse_canonical_filter("blur(10px)"), None);
+        assert_eq!(parse_canonical_filter("drop-shadow(0 4px red)"), None);
+    }
+
+    #[test]
+    fn test_parse_canonical_filter_chain_returns_first_only() {
+        // A chained `filter` string matches the FIRST known function
+        // found by `value.find(...)`. The compositor bridge is expected
+        // to decompose chains into multiple SyntheticFeature entries;
+        // single-op-per-feature is the documented contract.
+        let parsed = parse_canonical_filter("brightness(1.2) contrast(0.8)");
+        assert_eq!(parsed, Some(CanonicalFilter::Brightness(1.2)));
+    }
+
+    #[test]
+    fn test_features_to_effects_canonical_filter_route() {
+        // End-to-end through the bridge: SyntheticFeature::CanonicalFilter
+        // resolves to `Effect::canonical_filter(...)` with the parsed op.
+        let feature = SyntheticFeature {
+            feature_type: FeatureType::CanonicalFilter,
+            selector: ".hero".to_string(),
+            original_value: "saturate(0.7)".to_string(),
+        };
+        let effects = features_to_effects(&[feature], 1280, 800);
+        assert_eq!(effects.len(), 1);
+        assert!(matches!(effects[0].effect_type, EffectType::CanonicalFilter));
+        assert_eq!(
+            effects[0].canonical_filter_params,
+            Some(CanonicalFilter::Saturate(0.7))
+        );
+    }
 }
 
 /// Configuration for the compositor
