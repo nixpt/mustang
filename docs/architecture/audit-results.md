@@ -63,7 +63,7 @@ under `--features full` (the strictest combination, gpu + animation).
 |------------------------|----------------------|-------|
 | **default** features   | ✅ PASS (4.2s)        | Pure lib (no GPU deps needed). |
 | **`--features gpu`**   | ✅ PASS (1.9s)        | Strictest *runtime* path. |
-| **`--features full`**  | ❌ FAIL (E0432, 1s)   | Stale `src/lib.rs:41` re-export — see "Known deferred issue" below. |
+| **`--features full`**  | ✅ PASS (1.0s)        | All three gates clean as of the s306-carve-out resolution; see the resolved-issue section below for the historical narrative. |
 
 The dep-side audit ran cleanly under `--features full` because `cargo tree`
 does not require the lib to compile; cargo's `dependecies:` resolver can
@@ -71,7 +71,7 @@ still produce a graph even when the lib's source has import errors. So the
 boundary-HOLDS finding above is independent of the compile-side finding
 below.
 
-### Known deferred issue (NOT a doctrinal violation): `src/lib.rs:41`
+### Resolved issue (NOT a doctrinal violation): `src/lib.rs:41`
 
 The `cargo check --features full` failure:
 
@@ -244,6 +244,24 @@ historical comparison.
   gpu`; STALE under `--features full` (E0432 at `src/lib.rs:41`,
   deferred from s306 commit `853e72b`).
 - **2026-06-22T02:44:45Z** (cleanup PR) — `scripts/check-boundaries.sh` landed
+  (was working-tree only at audit time); CATEGORIES block expanded
+  with explicit `<category>:<kind>:<pattern>` (3-tuple) encoding for
+  editor-safe semantics; `dom:prefix:dioxus-` / `dom:prefix:dioxus_`
+  umbrella entries now catch the full `dioxus-*` crate family;
+  `dom:exact:font-kit` and `layout:exact:taffy_geom` added to bring
+  CONTENTS and script into parity. No re-audit performed; per-boundary
+  verdicts of the initial run are unchanged because the source tree
+  did not move between the audit run and this cleanup commit.
+- **2026-06-22T02:49:38Z** (s306-carve-out resolution) — `src/lib.rs:41`
+  `#[cfg(feature = "animation")] pub use animation::js_binding::JsAnimationRuntime;`
+  commented-out with dejavue-style rationale comment matching the s306
+  carve-out at `src/animation/mod.rs:15`. Brings `cargo check
+  --features full` from FAIL (E0432) to PASS. Audit-results.md
+  Cargo-check table updated `--features full` row from FAIL to PASS;
+  deferred-issue section renamed to "Resolved issue". No
+  re-audit performed for the dep-graph side (unaffected by the
+  carve-out; per-boundary verdicts unchanged); cargo check was
+  re-run as part of this resolution to confirm the gate flips.
   (was working-tree only at audit time); CATEGORIES block expanded
   with explicit `<category>:<kind>:<pattern>` (3-tuple) encoding for
   editor-safe semantics; `dom:prefix:dioxus-` / `dom:prefix:dioxus_`
