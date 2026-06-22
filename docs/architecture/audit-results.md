@@ -73,7 +73,19 @@ below.
 
 ### Resolved issue (NOT a doctrinal violation): `src/lib.rs:41`
 
-The `cargo check --features full` failure:
+> **[STATUS: RESOLVED]** — applied in the post-audit carve-out PR
+> (`2ff4d1b` *mustang: resolve s306 src/lib.rs:41 E0432 carve-out; full-feature
+> gate now PASS*). The `cargo check --features full` failure documented
+> below no longer reproduces as of the `2026-06-22T02:59:20Z` cadence
+> re-run row in the *Operational cadence table* below; in this run
+> all three cargo-check gates PASS and the per-boundary verdicts
+> continue to HOLDS. The remainder of this section is the
+> *historical narrative* preserved from the audit epoch
+> (`2026-06-22T01:33:52Z`) for traceability of the cause — useful
+> as context for future readers and as a pointer to the live
+> block-comment at `src/lib.rs:37-46` for the joint re-enable path.
+
+The `cargo check --features full` failure (at audit-time):
 
 ```text
 src/lib.rs:41:20: error[E0432]: unresolved import `animation::js_binding`
@@ -105,38 +117,16 @@ fix and still references the gone module:
 pub use animation::js_binding::JsAnimationRuntime;
 ```
 
-This is the *only* compile failure under any feature gate. The fix is
-mechanical (delete or guard the re-export line), and the runtime impact
-is zero (the cfg-gated feature path is also blocked from compiling
-because the upstream module isn't there).Recommended fix (out-of-scope for this audit, for symmetry with the
-existing s306 carve-out in `src/animation/mod.rs:15`):
-
-```rust
-// src/lib.rs around line 41 — comment out for parity with
-// src/animation/mod.rs:15's s306 carve-out. Note: re-enable when
-// boa_engine ships an icu_normalizer release that resolves the
-// ^2.1.1 requirement (parley ^0.10 pins icu_normalizer there).
-#[cfg(feature = "animation")]
-pub use animation::js_binding::JsAnimationRuntime;
-```
-
-Becomes:
-
-```rust
-// src/lib.rs around line 41 — comment out for parity with the
-// src/animation/mod.rs:15 s306 carve-out. The boa_engine JS runtime
-// is deferred because boa_engine 0.21 pins icu_normalizer ~2.0.0,
-// which conflicts with parley ^0.10's requirement on ^2.1.1.
-// Re-enable when boa_engine ships an icu_normalizer release that
-// resolves the ^2.1.1 requirement.
-// #[cfg(feature = "animation")]
-// pub use animation::js_binding::JsAnimationRuntime;
-```
-
-Why this audit doesn't fix it: the audit's deliverable is empirical
-evidence, not maintenance work. The compile-side staleness being a
-*known* deferred issue rather than a hidden failure is itself useful
-information for future readers.
+This was the *only* compile failure under any feature gate. The fix
+applied by the carve-out PR (`2ff4d1b`) was mechanical — comment-out
+the re-export line at `src/lib.rs:41` with a dejavue-style rationale
+comment matching the s306 carve-out at `src/animation/mod.rs:15`.
+See the live `src/lib.rs:37-46` block-comment for the joint re-enable
+path: BOTH `src/lib.rs:41` re-export AND `src/animation/mod.rs:15`
+mod-declaration must be uncommented simultaneously when the
+`boa_engine` `icu_normalizer` release resolves the parity conflict
+(`boa_engine 0.21 → icu_normalizer ~2.0.0` vs `parley ^0.10 →
+icu_normalizer ^2.1.1`).
 
 ## Top-level crates reachable under `--features full`
 
