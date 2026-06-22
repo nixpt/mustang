@@ -262,11 +262,95 @@ historical comparison.
   re-audit performed for the dep-graph side (unaffected by the
   carve-out; per-boundary verdicts unchanged); cargo check was
   re-run as part of this resolution to confirm the gate flips.
-  (was working-tree only at audit time); CATEGORIES block expanded
-  with explicit `<category>:<kind>:<pattern>` (3-tuple) encoding for
-  editor-safe semantics; `dom:prefix:dioxus-` / `dom:prefix:dioxus_`
-  umbrella entries now catch the full `dioxus-*` crate family;
-  `dom:exact:font-kit` and `layout:exact:taffy_geom` added to bring
-  CONTENTS and script into parity. No re-audit performed; per-boundary
-  verdicts of the initial run are unchanged because the source tree
-  did not move between the audit run and this cleanup commit.
+
+---
+
+## Operational cadence table
+
+The bullet-style entries above (`### Re-audit log`) remain as
+narrative context for the initial run + the two antecedent
+changes. This new section tracks *operational* re-runs of the
+audit on the same `+/[features]/` configuration, as recommended
+by the cadence rule in the Conclusion section above.
+
+Each row records:
+
+- **Re-audit (UTC)** — the audit's wall-clock start time.
+- **HEAD commit** — the commit hash at audit-time (so the audit is
+  reproducible from a specific snapshot).
+- **The three cargo-check compile-side gates** — `default` /
+  `--features gpu` / `--features full`. Each cell is PASS / FAIL
+  with a result-specific note where relevant.
+- **Per-boundary verdicts** — the dep-graph side under
+  `--features full` (the strictest combo). All four doctrinal
+  boundaries PLUS three CSS-layer auxiliaries (`stylo` /
+  `cssparser` / `selectors`) PLUS the broad-umbrella sweeps
+  (`dioxus-*`, `dioxus_*`, etc.) are exercised; "All 4 HOLDS"
+  means zero matches.
+- **Doctrinal drift vs initial** — compared to the
+  `2026-06-22T01:33:52Z` baseline (initial run).
+- **`cargo tree --features full` row count** — useful as a
+  dep-graph size fingerprint; changes only when the underlying
+  `[features]` block or direct deps change.
+
+| Re-audit (UTC)                              | HEAD commit  | `default`      | `--features gpu` | `--features full`  | Per-boundary verdicts (dep-graph side, `--features full`) | Doctrinal drift vs `2026-06-22T01:33:52Z` baseline | `cargo tree` row count |
+|---------------------------------------------|--------------|----------------|------------------|--------------------|-----------------------------------------------------------|---------------------------------------------------|-------------------------|
+| **2026-06-22T01:33:52Z** (initial run)       | `48bc6fe`    | PASS           | PASS             | **FAIL** (E0432 at `src/lib.rs:41`) | All 4 boundaries HOLDS; CSS-aux 0 matches; 0 umbrella matches | n/a (baseline epoch)                              | 4217                    |
+| 2026-06-22T02:44:45Z (cleanup PR)            | (post-cleanup, no dep-side re-audit) | unchanged | unchanged | unchanged | unchanged | unchanged — source tree did not move between audit and cleanup | unchanged |
+| 2026-06-22T02:49:38Z (s306 carve-out)        | (post-carve-out, no dep-side re-audit) | unchanged | unchanged | unchanged | unchanged | unchanged — dep-graph unaffected by carve-out (`src/lib.rs:41` is a compile-side fix, not a `[features]` or `[dependencies]` change) | unchanged |
+| **2026-06-22T02:56:45Z** (post-carve-out cadence re-run) | `2ff4d1b` | **PASS** (1.0s) | **PASS** (0s) | **PASS** (0s) | All 4 boundaries HOLDS; CSS-aux 0 matches; **0 broad-umbrella matches** (`^dioxus`, `^dioxus-`, `^dioxus_`, `^taffy`, `^parley` etc. all yield 0) | **NONE detected** vs `2026-06-22T01:33:52Z` baseline. Dep-graph (same `4217` rows) and direct-dep footprint unchanged. **Compile-side gate flipped**: `--features full` now PASS (was FAIL, s306 carve-out in this run). | **4217** (same as baseline; no row-count drift). |
+
+**Cadence-run interpretation notes:**
+
+- The post-carve-out cadence re-run (`2026-06-22T02:56:45Z`) is the
+  first row in this table that *actually re-exercises the audit
+  commands* rather than carrying over the previous audit's
+  per-boundary verdicts because the source tree did not move. From
+  this point forward, every cadence run re-runs all 3 cargo-check
+  gates, the canonical `cargo tree` sweep, and the per-boundary
+  grep — not just the compile-side gate that the prior two
+  antecedent changes were tracked with.
+- Doctrinal drift detection: zero matches on this re-run across all
+  4 boundaries + 3 CSS-aux crates + 7 broad-umbrella prefix sweeps.
+- Compile-side drift detection: clean improvement — `--features
+  full` flipped from FAIL (audit baseline) to PASS (this run) as a
+  result of the s306 carve-out resolution commit. The boundary
+  doctrine itself is unaffected by compile-side changes; the
+  per-boundary (dep-graph) verdict remains HOLDS at parity with
+  the audit baseline.
+- Reproducibility: this cadence run is reproducible by re-running
+  the `## Reproduction` block above. The `scripts/check-boundaries.sh`
+  exit-code-gated reproduction helper converges on these verdicts
+  under `--features full`.
+
+## Conclusion (cadence-run update)
+
+The post-carve-out cadence re-run (`2026-06-22T02:56:45Z`) confirms
+that the boundary doctrine continues to HOLDS on the dep-graph
+side AND that all three compile-side gates now PASS — a structural
+improvement over the audit-time baseline where `--features full`
+was deferred (E0432 at `src/lib.rs:41`).
+
+The empirical gate flips seen across this audit-cycle:
+
+1. **Audit-time baseline** (`2026-06-22T01:33:52Z`): `--features
+   full` FAIL (E0432 at `src/lib.rs:41`). Dep-graph-side: doctrine
+   HOLDS.
+2. **Cadence-run today** (`2026-06-22T02:56:45Z`, this commit):
+   `--features full` PASS. Dep-graph-side: doctrine still HOLDS
+   (no drift detected).
+
+Roster of artifacts verifying the doctrine going forward:
+
+- This file — `docs/architecture/audit-results.md` — empirical
+  evidence file, refreshed on each cadence re-run. Append new
+  rows to the **Operational cadence table** above; never overwrite
+  historical rows.
+- `scripts/check-boundaries.sh` — canonical machine-runnable
+  pre-merge gate (committed as part of the `2026-06-22T02:44:45Z`
+  cleanup PR; tracks all 4 boundaries + 3 umbrella categories by
+  `<category>:<kind>:<pattern>` 3-tuple). Exit 0 = clean; non-zero
+  = violation (run as a pre-merge gate).
+- `CONTRIBUTING.md` — the four-fold pre-merge checklist (links to
+  this file's `## Per-boundary audit results` table as the
+  canonical reference).
