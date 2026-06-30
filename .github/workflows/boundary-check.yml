@@ -35,25 +35,13 @@ on:
     branches: ["main"]
   pull_request:
     branches: ["main"]
-    # Only run on PR events that have a final SHA. Avoid running on
-    # `closed` (PR already merged / abandoned — historical non-blocking).
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
-# Cancel superseded in-progress runs on PR pushes so rapid `git push`es
-# don't queue. Push-to-main is sequential (no cancel-in-progress), because
-# main-push runs feed the audit cadence table.
-#
-# Group key MUST use `pull_request.number` (stable across PR synchronizes),
-# not just `github.ref` (which is the merge-commit ref and changes per
-# push, defeating cancel-in-progress). Falls back to `github.ref` for
-# push / workflow_dispatch events where `pull_request` is null.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# Minimal permissions: the script does not push back, no secrets required,
-# no PR-comment writes. `contents: read` is enough to checkout + read files.
 permissions:
   contents: read
 
@@ -70,26 +58,18 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install pinned Rust toolchain
-        # Cargo.toml pins rust-version = "1.85.0" — match it explicitly so
-        # a Cargo.toml-version bump doesn't silently drift this workflow.
-        # Ubuntu-latest runners ship bash 5+, satisfying the bash-4+
-        # requirement in `scripts/check-boundaries.sh`.
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.85.0
           components: rustfmt, clippy
 
       - name: Cache cargo build artifacts
-        # Shared across the four compile/test steps below (saves ~2-4 min
-        # on cold cache for the no-gpu default + gpu + full feature combination).
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: ${{ runner.os }}-mustang-v0
           cache-on-failure: true
 
       - name: Document the gate scope
-        # Emits the four-fold test matrix into the run log so the run page
-        # is self-describing without needing the audit-results.md link.
         run: |
           set -euo pipefail
           echo "== four-fold boundary doctrine (mustang) =="
@@ -108,9 +88,6 @@ jobs:
           echo "Reference: docs/architecture/audit-results.md (Operational cadence table)"
 
       - name: Pre-merge boundary gate (the four-fold test)
-        # Exits 0 clean / 1 violation / 2 preflight failure. Both non-zero
-        # exit codes block the PR — see CONTRIBUTING.md ## The four-fold test
-        # for the canonical four-fold test questions.
         id: boundary-gate
         run: |
           set -euo pipefail
@@ -130,39 +107,24 @@ jobs:
           cargo check --features gpu --message-format=short
 
       - name: Compile-side gates — full features (gpu + animation)
-        # The s306 src/lib.rs:41 E0432 carve-out (`2ff4d1b`) flipped this row
-        # from FAIL to PASS; if it ever flips back to FAIL on main, the audit
-        # cadence row should be re-recorded + the carve-out re-examined. See
-        # docs/architecture/audit-results.md ## Operational cadence table.
         id: check-full
         run: |
           set -euo pipefail
           cargo check --features full --message-format=short
 
       - name: Boundary-doctrine regression — blur example
-        # `cargo test --features gpu --examples blur` is the operational
-        # demonstration of the boundary doctrine (CONTRIBUTING.md ## Dev
-        # workflow step 3; README ## Boundary Doctrine). If the prologue
-        # assertion at the blur example doc-comment is lost, this fails.
         id: test-blur
         run: |
           set -euo pipefail
           cargo test --features gpu --examples blur
 
       - name: Full-feature test suite + doc tests
-        # Catches animation-feature regressions (the s306-deferred
-        # `animation::js_binding` carve-out stays commented-out, but
-        # `animation::easing` + `animation::AnimationEngine` are exercised).
         id: test-full
         run: |
           set -euo pipefail
           cargo test --features full
 
       - name: Result summary
-        # Posts a one-screen summary to the GitHub Actions run page.
-        # Both the gate names and the bounded remediation paths are
-        # surfaced so a failing PR points the contributor at the right
-        # doc without requiring battle-scars.
         if: always()
         run: |
           {
@@ -171,11 +133,11 @@ jobs:
             echo "| Gate | Status |"
             echo "|---|---|"
             echo "| boundary-gate (four-fold test) | **${{ steps.boundary-gate.outcome }}** |"
-            echo "| check-default                  | **${{ steps.check-default.outcome }}** |"
-            echo "| check-gpu                      | **${{ steps.check-gpu.outcome }}** |"
-            echo "| check-full                     | **${{ steps.check-full.outcome }}** |"
-            echo "| test-blur  (boundary regression) | **${{ steps.test-blur.outcome }}** |"
-            echo "| test-full  (full-feature suite)  | **${{ steps.test-full.outcome }}** |"
+            echo "| check-default | **${{ steps.check-default.outcome }}** |"
+            echo "| check-gpu | **${{ steps.check-gpu.outcome }}** |"
+            echo "| check-full | **${{ steps.check-full.outcome }}** |"
+            echo "| test-blur (boundary regression) | **${{ steps.test-blur.outcome }}** |"
+            echo "| test-full (full-feature suite) | **${{ steps.test-full.outcome }}** |"
             echo ""
             if [ "${{ job.status }}" = "success" ]; then
               echo "✅ All four boundaries hold; all compile gates PASS; all tests PASS."
@@ -183,8 +145,8 @@ jobs:
               echo "❌ One or more gates failed. Common remediations:"
               echo ""
               echo "  • **boundary-gate violation**: pull the violating crate out of mustang's dep tree. Remediation paths listed in CONTRIBUTING.md ## The four-fold test."
-              echo "  • **compile-gate failure**: re-run the 3-gate cadence locally per `docs/architecture/audit-results.md ## Operational cadence table` + the procedure in `DOCS/architecture/`."
-              echo "  • **test-blur failure**: the boundary-doctrine example's prologue walkthrough assertion was lost — see CONTRIBUTING.md ## Dev workflow step 3."
-              echo "  • **test-full failure**: an animation-feature regression slipped in — re-check `src/animation/` + `src/lib.rs` for unintended `boa_engine` / `icu_normalizer` re-resolution (the s306 carve-out is at `src/animation/mod.rs:9-15` + `src/lib.rs:37-46`)."
+              echo "  • **compile-gate failure**: re-run the 3-gate cadence locally per docs/architecture/audit-results.md ## Operational cadence table."
+              echo "  • **test-blur failure**: the boundary-doctrine example's prologue assertion was lost — see CONTRIBUTING.md ## Dev workflow step 3."
+              echo "  • **test-full failure**: an animation-feature regression slipped in — re-check src/animation/ + src/lib.rs for unintended dependency re-resolution."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
