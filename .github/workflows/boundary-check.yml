@@ -104,7 +104,7 @@ jobs:
           echo "  C. cargo check --features full  (gpu + animation features)"
           echo "  D. cargo test --features gpu --examples blur  (boundary-doctrine regression)"
           echo "  E. cargo test --features full   (full-feature + doc tests)"
-          echo "  F. cargo test --features js     (JS animation runtime, boa_engine 0.22)"
+          echo "  F. cargo test --features js     (JS animation runtime, boa_engine 0.22, Rust 1.91)"
           echo ""
           echo "Reference: docs/architecture/audit-results.md (Operational cadence table)"
 
@@ -158,13 +158,16 @@ jobs:
           set -euo pipefail
           cargo test --features full
 
-      - name: JS animation runtime (boa_engine 0.22)
+      - name: JS animation runtime (boa_engine 0.22, Rust 1.91)
         # The opt-in `js` feature: boa_engine 0.22 pins icu_normalizer ~2.3, which
-        # coexists with parley ^2.1.1 in consumers (boa 0.21 did not).
+        # coexists with parley ^2.1.1 in consumers (boa 0.21 did not). boa 0.22
+        # needs Rust 1.91, above the crate-wide MSRV (1.88) the other gates use,
+        # so this step runs on its own toolchain.
         id: test-js
         run: |
           set -euo pipefail
-          cargo test --features js
+          rustup toolchain install 1.91.0 --profile minimal
+          cargo +1.91.0 test --features js
 
       - name: Result summary
         # Posts a one-screen summary to the GitHub Actions run page.

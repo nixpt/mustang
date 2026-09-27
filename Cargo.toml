@@ -24,6 +24,7 @@ gpu = ["dep:anyrender", "dep:anyrender_vello", "dep:wgpu", "dep:kurbo", "dep:pen
 # `js` feature: boa_engine 0.22 pins icu_normalizer ~2.3, compatible with
 # parley's ^2.1.1 (boa 0.21's ~2.0.0 was the conflict that deferred it).
 animation = []
+# `js` needs Rust 1.91+ (boa_engine 0.22's MSRV); everything else needs 1.88.
 js = ["animation", "dep:boa_engine"]
 full = ["gpu", "animation"]
 

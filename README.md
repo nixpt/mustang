@@ -18,7 +18,8 @@ No features are enabled by default.
 - `gpu`: GPU acceleration via Vello and wgpu
 - `animation`: Rust-only easing curves + animation engine
 - `js`: `animation` plus a JavaScript animation runtime (`JsAnimationRuntime`)
-  on `boa_engine` 0.22. Opt-in so `animation`/`full` never pull in a JS engine.
+  on `boa_engine` 0.22. Needs Rust 1.91+ (boa 0.22's own MSRV); the rest of the
+  crate needs 1.88. Opt-in so `animation`/`full` never pull in a JS engine.
   (It was deferred while `boa_engine` 0.21 pinned `icu_normalizer ~2.0.0`, which
   could not coexist with `parley`'s `^2.1.1`; 0.22 pins `~2.3`, which does.)
 - `full`: `gpu` + `animation`
