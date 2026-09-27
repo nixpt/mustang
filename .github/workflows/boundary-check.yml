@@ -70,13 +70,13 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install pinned Rust toolchain
-        # Cargo.toml pins rust-version = "1.85.0" — match it explicitly so
+        # Cargo.toml pins rust-version = "1.88" (vello 0.7 + wgpu 27 need it) — match it explicitly so
         # a Cargo.toml-version bump doesn't silently drift this workflow.
         # Ubuntu-latest runners ship bash 5+, satisfying the bash-4+
         # requirement in `scripts/check-boundaries.sh`.
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.85.0
+          toolchain: 1.88.0
           components: rustfmt, clippy
 
       - name: Cache cargo build artifacts
@@ -104,6 +104,7 @@ jobs:
           echo "  C. cargo check --features full  (gpu + animation features)"
           echo "  D. cargo test --features gpu --examples blur  (boundary-doctrine regression)"
           echo "  E. cargo test --features full   (full-feature + doc tests)"
+          echo "  F. cargo test --features js     (JS animation runtime, boa_engine 0.22)"
           echo ""
           echo "Reference: docs/architecture/audit-results.md (Operational cadence table)"
 
@@ -150,13 +151,20 @@ jobs:
           cargo test --features gpu --examples blur
 
       - name: Full-feature test suite + doc tests
-        # Catches animation-feature regressions (the s306-deferred
-        # `animation::js_binding` carve-out stays commented-out, but
-        # `animation::easing` + `animation::AnimationEngine` are exercised).
+        # Catches animation-feature regressions (`animation::easing` +
+        # `animation::AnimationEngine`). The JS runtime has its own step below.
         id: test-full
         run: |
           set -euo pipefail
           cargo test --features full
+
+      - name: JS animation runtime (boa_engine 0.22)
+        # The opt-in `js` feature: boa_engine 0.22 pins icu_normalizer ~2.3, which
+        # coexists with parley ^2.1.1 in consumers (boa 0.21 did not).
+        id: test-js
+        run: |
+          set -euo pipefail
+          cargo test --features js
 
       - name: Result summary
         # Posts a one-screen summary to the GitHub Actions run page.
@@ -176,6 +184,7 @@ jobs:
             echo "| check-full                     | **${{ steps.check-full.outcome }}** |"
             echo "| test-blur  (boundary regression) | **${{ steps.test-blur.outcome }}** |"
             echo "| test-full  (full-feature suite)  | **${{ steps.test-full.outcome }}** |"
+            echo "| test-js    (JS animation runtime) | **${{ steps.test-js.outcome }}** |"
             echo ""
             if [ "${{ job.status }}" = "success" ]; then
               echo "✅ All four boundaries hold; all compile gates PASS; all tests PASS."
@@ -183,8 +192,8 @@ jobs:
               echo "❌ One or more gates failed. Common remediations:"
               echo ""
               echo "  • **boundary-gate violation**: pull the violating crate out of mustang's dep tree. Remediation paths listed in CONTRIBUTING.md ## The four-fold test."
-              echo "  • **compile-gate failure**: re-run the 3-gate cadence locally per `docs/architecture/audit-results.md ## Operational cadence table` + the procedure in `DOCS/architecture/`."
+              echo "  • **compile-gate failure**: re-run the 3-gate cadence locally per 'docs/architecture/audit-results.md ## Operational cadence table' + the procedure in 'DOCS/architecture/'."
               echo "  • **test-blur failure**: the boundary-doctrine example's prologue walkthrough assertion was lost — see CONTRIBUTING.md ## Dev workflow step 3."
-              echo "  • **test-full failure**: an animation-feature regression slipped in — re-check `src/animation/` + `src/lib.rs` for unintended `boa_engine` / `icu_normalizer` re-resolution (the s306 carve-out is at `src/animation/mod.rs:9-15` + `src/lib.rs:37-46`)."
+              echo "  • **test-full / test-js failure**: an animation or JS-runtime regression slipped in — re-check 'src/animation/' + 'src/lib.rs'; for test-js also check boa_engine still resolves icu_normalizer ~2.3 alongside parley ^2.1.1."
             fi
           } >> "$GITHUB_STEP_SUMMARY"

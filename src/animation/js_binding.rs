@@ -76,7 +76,7 @@ impl JsAnimationRuntime {
 
     /// JS function: print(message) - for debugging
     fn js_print(_this: &JsValue, args: &[JsValue], _context: &mut Context) -> JsResult<JsValue> {
-        if let Some(msg) = args.get(0) {
+        if let Some(msg) = args.first() {
             if let Some(s) = msg.as_string() {
                 println!("[JS] {}", s.to_std_string_escaped());
             } else {
@@ -93,7 +93,7 @@ impl JsAnimationRuntime {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // Get config object from first argument
-        let config_obj = args.get(0).ok_or_else(|| {
+        let config_obj = args.first().ok_or_else(|| {
             boa_engine::JsNativeError::typ().with_message("animate() requires a config object")
         })?;
 
@@ -119,8 +119,7 @@ impl JsAnimationRuntime {
             ),
             easing,
             iterations: Self::get_number_property(config_obj, "iterations", context)?
-                .map(|n| if n < 0.0 { None } else { Some(n as u32) })
-                .flatten()
+                .and_then(|n| if n < 0.0 { None } else { Some(n as u32) })
                 .or(Some(1)),
             alternate: Self::get_bool_property(config_obj, "alternate", context)?.unwrap_or(false),
             fill_forwards: Self::get_bool_property(config_obj, "fillForwards", context)?
@@ -160,7 +159,7 @@ impl JsAnimationRuntime {
     /// JS function: mustang.ease(name, t) - apply easing function
     fn js_ease(_this: &JsValue, args: &[JsValue], _context: &mut Context) -> JsResult<JsValue> {
         let easing_name = args
-            .get(0)
+            .first()
             .and_then(|v| v.as_string())
             .map(|s| s.to_std_string_escaped())
             .unwrap_or_else(|| "linear".to_string());
@@ -181,10 +180,10 @@ impl JsAnimationRuntime {
     ) -> JsResult<Option<String>> {
         if let Some(object) = obj.as_object() {
             let key = js_string!(name);
-            if let Ok(value) = object.get(key, context) {
-                if let Some(s) = value.as_string() {
-                    return Ok(Some(s.to_std_string_escaped()));
-                }
+            if let Ok(value) = object.get(key, context)
+                && let Some(s) = value.as_string()
+            {
+                return Ok(Some(s.to_std_string_escaped()));
             }
         }
         Ok(None)
@@ -198,10 +197,10 @@ impl JsAnimationRuntime {
     ) -> JsResult<Option<f64>> {
         if let Some(object) = obj.as_object() {
             let key = js_string!(name);
-            if let Ok(value) = object.get(key, context) {
-                if let Some(n) = value.as_number() {
-                    return Ok(Some(n));
-                }
+            if let Ok(value) = object.get(key, context)
+                && let Some(n) = value.as_number()
+            {
+                return Ok(Some(n));
             }
         }
         Ok(None)
@@ -215,10 +214,10 @@ impl JsAnimationRuntime {
     ) -> JsResult<Option<bool>> {
         if let Some(object) = obj.as_object() {
             let key = js_string!(name);
-            if let Ok(value) = object.get(key, context) {
-                if value.is_boolean() {
-                    return Ok(Some(value.as_boolean().unwrap_or(false)));
-                }
+            if let Ok(value) = object.get(key, context)
+                && value.is_boolean()
+            {
+                return Ok(Some(value.as_boolean().unwrap_or(false)));
             }
         }
         Ok(None)
@@ -232,65 +231,63 @@ impl JsAnimationRuntime {
         let mut properties = Vec::new();
 
         // Get the "properties" array/object
-        if let Some(object) = obj.as_object() {
-            if let Ok(props_val) = object.get(js_string!("properties"), context) {
-                // Handle blur property
-                if let Ok(blur) = Self::get_object_property(&props_val, "blur", context) {
-                    if let (Some(from), Some(to)) = (
-                        Self::get_number_property(&blur, "from", context)?,
-                        Self::get_number_property(&blur, "to", context)?,
-                    ) {
-                        properties.push(AnimatedProperty::Blur {
-                            from: from as f32,
-                            to: to as f32,
-                        });
-                    }
-                }
+        if let Some(object) = obj.as_object()
+            && let Ok(props_val) = object.get(js_string!("properties"), context)
+        {
+            // Handle blur property
+            if let Ok(blur) = Self::get_object_property(&props_val, "blur", context)
+                && let (Some(from), Some(to)) = (
+                    Self::get_number_property(&blur, "from", context)?,
+                    Self::get_number_property(&blur, "to", context)?,
+                )
+            {
+                properties.push(AnimatedProperty::Blur {
+                    from: from as f32,
+                    to: to as f32,
+                });
+            }
 
-                // Handle scale property
-                if let Ok(scale) = Self::get_object_property(&props_val, "scale", context) {
-                    if let (Some(from), Some(to)) = (
-                        Self::get_number_property(&scale, "from", context)?,
-                        Self::get_number_property(&scale, "to", context)?,
-                    ) {
-                        properties.push(AnimatedProperty::Scale {
-                            from: from as f32,
-                            to: to as f32,
-                        });
-                    }
-                }
+            // Handle scale property
+            if let Ok(scale) = Self::get_object_property(&props_val, "scale", context)
+                && let (Some(from), Some(to)) = (
+                    Self::get_number_property(&scale, "from", context)?,
+                    Self::get_number_property(&scale, "to", context)?,
+                )
+            {
+                properties.push(AnimatedProperty::Scale {
+                    from: from as f32,
+                    to: to as f32,
+                });
+            }
 
-                // Handle translate property
-                if let Ok(translate) = Self::get_object_property(&props_val, "translate", context) {
-                    let from_x =
-                        Self::get_number_property(&translate, "fromX", context)?.unwrap_or(0.0);
-                    let from_y =
-                        Self::get_number_property(&translate, "fromY", context)?.unwrap_or(0.0);
-                    let to_x =
-                        Self::get_number_property(&translate, "toX", context)?.unwrap_or(0.0);
-                    let to_y =
-                        Self::get_number_property(&translate, "toY", context)?.unwrap_or(0.0);
+            // Handle translate property
+            if let Ok(translate) = Self::get_object_property(&props_val, "translate", context) {
+                let from_x =
+                    Self::get_number_property(&translate, "fromX", context)?.unwrap_or(0.0);
+                let from_y =
+                    Self::get_number_property(&translate, "fromY", context)?.unwrap_or(0.0);
+                let to_x = Self::get_number_property(&translate, "toX", context)?.unwrap_or(0.0);
+                let to_y = Self::get_number_property(&translate, "toY", context)?.unwrap_or(0.0);
 
-                    properties.push(AnimatedProperty::Translate {
-                        from_x: from_x as f32,
-                        from_y: from_y as f32,
-                        to_x: to_x as f32,
-                        to_y: to_y as f32,
-                    });
-                }
+                properties.push(AnimatedProperty::Translate {
+                    from_x: from_x as f32,
+                    from_y: from_y as f32,
+                    to_x: to_x as f32,
+                    to_y: to_y as f32,
+                });
+            }
 
-                // Handle rotate property
-                if let Ok(rotate) = Self::get_object_property(&props_val, "rotate", context) {
-                    if let (Some(from), Some(to)) = (
-                        Self::get_number_property(&rotate, "from", context)?,
-                        Self::get_number_property(&rotate, "to", context)?,
-                    ) {
-                        properties.push(AnimatedProperty::Rotate {
-                            from: from as f32,
-                            to: to as f32,
-                        });
-                    }
-                }
+            // Handle rotate property
+            if let Ok(rotate) = Self::get_object_property(&props_val, "rotate", context)
+                && let (Some(from), Some(to)) = (
+                    Self::get_number_property(&rotate, "from", context)?,
+                    Self::get_number_property(&rotate, "to", context)?,
+                )
+            {
+                properties.push(AnimatedProperty::Rotate {
+                    from: from as f32,
+                    to: to as f32,
+                });
             }
         }
 
@@ -340,10 +337,10 @@ impl JsAnimationRuntime {
     /// Start all pending animations
     pub fn start_all(&mut self) {
         for i in 0..self.engine.animations.len() {
-            if let Some(anim) = self.engine.get_animation(i) {
-                if anim.state == super::AnimationState::Pending {
-                    anim.start();
-                }
+            if let Some(anim) = self.engine.get_animation(i)
+                && anim.state == super::AnimationState::Pending
+            {
+                anim.start();
             }
         }
     }

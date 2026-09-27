@@ -13,10 +13,17 @@ Mustang transforms declarative CSS-like synthetic features into native GPU opera
 
 ## Features
 
-- `gpu` (default): Enables GPU acceleration via Vello and wgpu
-- `full`: enables `gpu` + `animation` (Rust-only easing + engine; JS bridge
-  is deferred because `boa_engine 0.21` pins `icu_normalizer ~2.0.0` while
-  `parley ^0.10` requires `^2.1.1` — see `src/animation/mod.rs`)
+No features are enabled by default.
+
+- `gpu`: GPU acceleration via Vello and wgpu
+- `animation`: Rust-only easing curves + animation engine
+- `js`: `animation` plus a JavaScript animation runtime (`JsAnimationRuntime`)
+  on `boa_engine` 0.22. Opt-in so `animation`/`full` never pull in a JS engine.
+  (It was deferred while `boa_engine` 0.21 pinned `icu_normalizer ~2.0.0`, which
+  could not coexist with `parley`'s `^2.1.1`; 0.22 pins `~2.3`, which does.)
+- `full`: `gpu` + `animation`
+
+Requires Rust 1.88 or newer.
 
 ## Boundary Doctrine
 

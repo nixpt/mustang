@@ -38,18 +38,12 @@ pub use animation::{
 pub use compositor::region::Region;
 pub use config::{MustangConfig, MustangMode};
 
-// js_binding (boa_engine JS runtime) re-export deferred — companion
-// carve-out lives at src/animation/mod.rs:15 (where `pub mod js_binding;`
-// was commented out under the same s306 rationale). The boa_engine JS
-// runtime is deferred because boa_engine 0.21 pins icu_normalizer ~2.0.0,
-// which conflicts with parley ^0.10's requirement on ^2.1.1; the two
-// cannot coexist in a single Cargo resolve graph. Re-enable when
-// boa_engine ships an icu_normalizer release that resolves the ^2.1.1
-// requirement. When re-enabling, uncomment BOTH this re-export AND
-// the corresponding `pub mod js_binding;` at src/animation/mod.rs:15
-// simultaneously.
-// #[cfg(feature = "animation")]
-// pub use animation::js_binding::JsAnimationRuntime;
+// JS animation runtime (boa_engine), behind the opt-in `js` feature. It was
+// deferred while boa_engine 0.21 pinned icu_normalizer ~2.0.0, which could not
+// coexist with parley's ^2.1.1 in one resolve graph; boa_engine 0.22 pins ~2.3,
+// which does. Kept out of `animation`/`full` so they don't pull in a JS engine.
+#[cfg(feature = "js")]
+pub use animation::js_binding::JsAnimationRuntime;
 
 #[cfg(feature = "gpu")]
 pub use renderer::{
