@@ -1,8 +1,8 @@
 [package]
 name = "arniko-mustang"
-version = "0.2.99"
+version = "0.3.0"
 edition = "2024"
-rust-version = "1.85.0"
+rust-version = "1.88"
 authors = ["The Exosphere Authors"]
 description = "Mustang: GPU-Accelerated Effect Compositor for Exosphere"
 license = "MIT OR Apache-2.0"
@@ -10,6 +10,9 @@ homepage = "https://github.com/nixpt/mustang"
 repository = "https://github.com/nixpt/mustang"
 categories = ["gui", "rendering"]
 keywords = ["gpu", "vello", "compositor", "effects", "ui"]
+readme = "README.md"
+# Ship the library and its examples only (not .dejavue/, CI, scripts or agent docs).
+include = ["/src/**", "/examples/**", "/README.md", "/LICENSE-MIT", "/LICENSE-APACHE"]
 
 [lib]
 name = "mustang"
@@ -17,12 +20,17 @@ name = "mustang"
 [features]
 default = []
 gpu = ["dep:anyrender", "dep:anyrender_vello", "dep:wgpu", "dep:kurbo", "dep:peniko", "dep:vello"]
-# animation = easing + engine (no JS runtime; boa_engine removed — icu_normalizer ~2.0.0 conflicts with parley ^0.10 ^2.1.1)
+# animation = easing + engine. The JS animation runtime is the separate opt-in
+# `js` feature: boa_engine 0.22 pins icu_normalizer ~2.3, compatible with
+# parley's ^2.1.1 (boa 0.21's ~2.0.0 was the conflict that deferred it).
 animation = []
+# `js` needs Rust 1.91+ (boa_engine 0.22's MSRV); everything else needs 1.88.
+js = ["animation", "dep:boa_engine"]
 full = ["gpu", "animation"]
 
 [dependencies]
 anyhow = "1.0"
+boa_engine = { version = "0.22", optional = true }
 tracing = "0.1"
 
 [dependencies.anyrender]
@@ -52,3 +60,8 @@ optional = true
 [dev-dependencies]
 tokio-test = "0.4"
 png = "0.17"
+
+# The blur example only has a `main` with the gpu feature.
+[[example]]
+name = "blur"
+required-features = ["gpu"]

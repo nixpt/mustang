@@ -8,11 +8,11 @@
 
 pub mod easing;
 
-// js_binding (boa_engine JS runtime) deferred — boa_engine 0.21 pins icu_normalizer ~2.0.0
-// which conflicts with parley ^0.10 -> icu_normalizer ^2.1.1. Re-enable when boa_engine
-// upgrades its icu dep.
-// #[cfg(feature = "animation")]
-// pub mod js_binding;
+// JS animation runtime (boa_engine). Opt-in `js` feature: boa_engine 0.22 pins
+// icu_normalizer ~2.3, which coexists with parley's ^2.1.1 (boa 0.21's ~2.0.0 did not,
+// which is why this was deferred until now).
+#[cfg(feature = "js")]
+pub mod js_binding;
 
 use crate::effect::{ColorAdjustParams, Effect, EffectType, TransformParams};
 use std::collections::HashMap;
