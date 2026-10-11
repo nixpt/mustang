@@ -46,7 +46,7 @@ fn run_pipeline() -> Result<(), Box<dyn std::error::Error>> {
 
     // 2. Synthetic Vello scene. Uses direct `vello::Scene::fill` since
     //    `VelloScenePainter::fill` is not the public API surface in
-    //    anyrender_vello 0.7 (the wrapper implements `anyrender::PaintScene`
+    //    anyrender_vello (bliss-anyrender-vello 0.3; the wrapper implements `anyrender::PaintScene`
     //    but the call path is `apply_scene_effects` driving effects into
     //    any encoder).
     let mut scene = Scene::new();
