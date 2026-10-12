@@ -1,10 +1,5 @@
 # State
 
-Updated: 2026-10-12T10:18:42Z
+Updated: 2026-10-12T05:50:15-05:00
 
-PR#4 MERGED via merge commit 72400e5 (animation interpolation + scheduler
-per-region rects + GPU compute path + cargo-deny). PR#5 (harvest/pr1-correctness)
-rebased onto the merged main: C1 Newton cubic-bezier, H1 LRU effect cache,
-RAII LayerGuard/begin_layer_scope + non_exhaustive Effect, parser scale(x,y) +
-multiplicative color chain, cargo-audit ^0.22 pin. PR#1 closed as superseded
-(audit comment on the PR). CI green on both PRs pre-merge.
+main @ 9d42662 — PR#4 (animation interpolation + scheduler per-region rects + GPU compute path + cargo-deny) and PR#5 (C1 Newton easing, LRU cache, RAII LayerGuard, parser hardening, cargo-audit CI) both MERGED. Post-merge verification on main: 89 lib tests + js-gate 91 + blur example green, boundaries + deny clean. Branches deleted (local + remote). Crate now at 0.3.0 with js feature (boa 0.22) + gpu_compute engine + LRU cache + LayerGuard.
