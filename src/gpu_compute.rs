@@ -468,6 +468,24 @@ pub enum GpuComputeError {
 }
 
 #[cfg(feature = "gpu")]
+impl std::fmt::Display for GpuComputeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::BufferLength { expected, got } => {
+                write!(f, "buffer length {got} does not match {expected} (width*height*4)")
+            }
+            Self::NotApplicable(kind) => {
+                write!(f, "effect kind {kind:?} is scene-native — apply it via apply_to_scene, not the GPU compute engine")
+            }
+            Self::Runtime(msg) => write!(f, "wgpu runtime failure: {msg}"),
+        }
+    }
+}
+
+#[cfg(feature = "gpu")]
+impl std::error::Error for GpuComputeError {}
+
+#[cfg(feature = "gpu")]
 use wgpu::util::DeviceExt;
 
 #[cfg(feature = "gpu")]

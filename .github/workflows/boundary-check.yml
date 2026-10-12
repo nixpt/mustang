@@ -105,6 +105,7 @@ jobs:
           echo "  B. cargo check --features gpu   (gpu features)"
           echo "  C. cargo check --features full  (gpu + animation features)"
           echo "  D. cargo test --features gpu --examples blur  (boundary-doctrine regression)"
+          echo "  D2. cargo test --features gpu --examples blur_gpu  (full GPU pipeline: vello raster + compute engine)"
           echo "  E. cargo test --features full   (full-feature + doc tests)"
           echo "  F. cargo test --features js     (JS animation runtime, boa_engine 0.22, Rust 1.91)"
           echo ""
@@ -164,6 +165,18 @@ jobs:
           set -euo pipefail
           cargo test --features gpu --examples blur
 
+      - name: Full GPU pipeline — blur_gpu example
+        # `examples/blur_gpu.rs` exercises the REAL rendering path end to
+        # end: vello-on-wgpu rasterization (VelloImageRenderer) + the GPU
+        # compute engine post-processing the deferred effects, with pixel
+        # ground-truth assertions. Skips gracefully (exit 0) on runners
+        # without a wgpu adapter; on adapter-equipped runners it is the
+        # end-to-end GPU regression gate.
+        id: test-blur-gpu
+        run: |
+          set -euo pipefail
+          cargo test --features gpu --examples blur_gpu
+
       - name: Full-feature test suite + doc tests
         # Catches animation-feature regressions (`animation::easing` +
         # `animation::AnimationEngine`). The JS runtime has its own step below.
@@ -201,6 +214,7 @@ jobs:
             echo "| check-gpu                      | **${{ steps.check-gpu.outcome }}** |"
             echo "| check-full                     | **${{ steps.check-full.outcome }}** |"
             echo "| test-blur  (boundary regression) | **${{ steps.test-blur.outcome }}** |"
+            echo "| test-blur-gpu (full GPU pipeline) | **${{ steps.test-blur-gpu.outcome }}** |"
             echo "| test-full  (full-feature suite)  | **${{ steps.test-full.outcome }}** |"
             echo "| test-js    (JS animation runtime) | **${{ steps.test-js.outcome }}** |"
             echo ""

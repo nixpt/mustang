@@ -116,4 +116,7 @@ impl MustangSceneBundle {
 }
 
 // Re-export anyrender_vello types for convenience
-pub use anyrender_vello::{VelloRendererOptions, VelloScenePainter, VelloWindowRenderer};
+pub use anyrender::ImageRenderer;
+pub use anyrender_vello::{
+    VelloImageRenderer, VelloRendererOptions, VelloScenePainter, VelloWindowRenderer,
+};
