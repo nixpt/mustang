@@ -33,12 +33,39 @@ pub enum AnimationState {
     Cancelled,
 }
 
+/// The effect kind and interpolated scalars of an [`AnimatedProperty`] at
+/// a given progress.
+///
+/// Produced by [`AnimatedProperty::interpolate`]. `kind` names the
+/// [`EffectType`] the property animates; `value` is the primary
+/// interpolated scalar — blur radius for `BackdropBlur`, uniform scale /
+/// translate_x / degrees for `Transform2D`, and the multiplier for
+/// `ColorAdjust` (brightness or the opacity fade-to-black approximation).
+/// `value2` carries the second scalar of two-dimensional properties
+/// (`translate_y`); it is `0.0` for one-dimensional properties.
+///
+/// Construct the full [`Effect`] with [`AnimatedProperty::to_effect`],
+/// which routes through this struct so the interpolation math lives in
+/// exactly one place.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct InterpolatedValue {
+    /// Which effect kind the property animates.
+    pub kind: EffectType,
+    /// Primary interpolated scalar at the requested progress.
+    pub value: f32,
+    /// Second scalar for two-dimensional properties (`translate_y`).
+    /// `0.0` for one-dimensional properties.
+    pub value2: f32,
+}
+
 /// A single animated property
 #[derive(Debug, Clone)]
 pub enum AnimatedProperty {
     /// Blur radius animation
     Blur { from: f32, to: f32 },
-    /// Opacity animation (0.0 - 1.0)
+    /// Opacity animation (0.0 - 1.0). No native opacity effect kind yet —
+    /// animates as a ColorAdjust fade-to-black approximation (see
+    /// `interpolate()`'s Opacity arm for the decided semantics).
     Opacity { from: f32, to: f32 },
     /// Scale animation
     Scale { from: f32, to: f32 },
@@ -56,95 +83,117 @@ pub enum AnimatedProperty {
 }
 
 impl AnimatedProperty {
-    /// Interpolate the property at a given progress (0.0 - 1.0)
-    pub fn interpolate(&self, progress: f32) -> EffectType {
+    /// Interpolate the property at a given progress (0.0 - 1.0).
+    ///
+    /// Returns the effect kind the property animates **plus** the real
+    /// interpolated scalars — nothing is discarded. [`AnimatedProperty::to_effect`]
+    /// routes through this method so the interpolation math lives in exactly
+    /// one place.
+    pub fn interpolate(&self, progress: f32) -> InterpolatedValue {
         let t = progress.clamp(0.0, 1.0);
         match *self {
-            AnimatedProperty::Blur { from, to } => {
-                let _radius = from + (to - from) * t;
-                EffectType::BackdropBlur
-            }
+            AnimatedProperty::Blur { from, to } => InterpolatedValue {
+                kind: EffectType::BackdropBlur,
+                value: from + (to - from) * t,
+                value2: 0.0,
+            },
             AnimatedProperty::Opacity { from, to } => {
-                let _opacity = from + (to - from) * t;
-                // Opacity would be handled via blend mode
-                EffectType::BackdropBlur // Placeholder
+                // Opacity semantics (decided): mustang has no native
+                // opacity/alpha-compositing effect kind yet, so opacity
+                // animates toward the ColorAdjust family as a
+                // fade-to-black approximation — all RGB multipliers
+                // become the interpolated alpha. True alpha compositing
+                // (a dedicated `EffectType::Opacity` rendered scene-natively
+                // via Vello's `push_layer` alpha) is the follow-up once
+                // the effect-kind roster grows.
+                InterpolatedValue {
+                    kind: EffectType::ColorAdjust,
+                    value: from + (to - from) * t,
+                    value2: 0.0,
+                }
             }
-            AnimatedProperty::Scale { from, to } => {
-                let _scale = from + (to - from) * t;
-                EffectType::Transform2D
-            }
+            AnimatedProperty::Scale { from, to } => InterpolatedValue {
+                kind: EffectType::Transform2D,
+                value: from + (to - from) * t,
+                value2: 0.0,
+            },
             AnimatedProperty::Translate {
                 from_x,
                 from_y,
                 to_x,
                 to_y,
-            } => {
-                let _x = from_x + (to_x - from_x) * t;
-                let _y = from_y + (to_y - from_y) * t;
-                EffectType::Transform2D
-            }
-            AnimatedProperty::Rotate { from, to } => {
-                let _degrees = from + (to - from) * t;
-                EffectType::Transform2D
-            }
-            AnimatedProperty::Brightness { from, to } => {
-                let _brightness = from + (to - from) * t;
-                EffectType::ColorAdjust
-            }
+            } => InterpolatedValue {
+                kind: EffectType::Transform2D,
+                value: from_x + (to_x - from_x) * t,
+                value2: from_y + (to_y - from_y) * t,
+            },
+            AnimatedProperty::Rotate { from, to } => InterpolatedValue {
+                kind: EffectType::Transform2D,
+                value: from + (to - from) * t,
+                value2: 0.0,
+            },
+            AnimatedProperty::Brightness { from, to } => InterpolatedValue {
+                kind: EffectType::ColorAdjust,
+                value: from + (to - from) * t,
+                value2: 0.0,
+            },
         }
     }
 
     /// Get the effect at the current progress
+    ///
+    /// Routes through [`AnimatedProperty::interpolate`] — the interpolated
+    /// scalars come from there, this method only shapes them into the
+    /// per-kind parameter structs.
     pub fn to_effect(&self, selector: &str, viewport: (u32, u32), progress: f32) -> Effect {
-        let t = progress.clamp(0.0, 1.0);
+        let iv = self.interpolate(progress);
         match *self {
-            AnimatedProperty::Blur { from, to } => {
-                let radius = from + (to - from) * t;
-                Effect::blur(selector, radius, viewport.0, viewport.1)
+            AnimatedProperty::Blur { .. } => {
+                Effect::blur(selector, iv.value, viewport.0, viewport.1)
             }
-            AnimatedProperty::Scale { from, to } => {
-                let scale = from + (to - from) * t;
-                let params = TransformParams {
-                    scale_x: scale,
-                    scale_y: scale,
-                    ..Default::default()
-                };
-                Effect::transform(selector, params, viewport.0, viewport.1)
-            }
-            AnimatedProperty::Translate {
-                from_x,
-                from_y,
-                to_x,
-                to_y,
-            } => {
-                let x = from_x + (to_x - from_x) * t;
-                let y = from_y + (to_y - from_y) * t;
-                let params = TransformParams {
-                    translate_x: x,
-                    translate_y: y,
-                    ..Default::default()
-                };
-                Effect::transform(selector, params, viewport.0, viewport.1)
-            }
-            AnimatedProperty::Rotate { from, to } => {
-                let degrees = from + (to - from) * t;
-                let params = TransformParams {
-                    rotate_degrees: degrees,
-                    ..Default::default()
-                };
-                Effect::transform(selector, params, viewport.0, viewport.1)
-            }
-            AnimatedProperty::Brightness { from, to } => {
-                let brightness = from + (to - from) * t;
+            // Fade-to-black approximation — see `interpolate()`'s
+            // Opacity arm for the decided semantics.
+            AnimatedProperty::Opacity { .. } => {
                 let params = ColorAdjustParams {
-                    red_multiplier: brightness,
-                    green_multiplier: brightness,
-                    blue_multiplier: brightness,
+                    red_multiplier: iv.value,
+                    green_multiplier: iv.value,
+                    blue_multiplier: iv.value,
                     ..Default::default()
                 };
                 Effect::color_adjust(selector, params)
             }
-            _ => Effect::blur(selector, 0.0, viewport.0, viewport.1),
+            AnimatedProperty::Scale { .. } => {
+                let params = TransformParams {
+                    scale_x: iv.value,
+                    scale_y: iv.value,
+                    ..Default::default()
+                };
+                Effect::transform(selector, params, viewport.0, viewport.1)
+            }
+            AnimatedProperty::Translate { .. } => {
+                let params = TransformParams {
+                    translate_x: iv.value,
+                    translate_y: iv.value2,
+                    ..Default::default()
+                };
+                Effect::transform(selector, params, viewport.0, viewport.1)
+            }
+            AnimatedProperty::Rotate { .. } => {
+                let params = TransformParams {
+                    rotate_degrees: iv.value,
+                    ..Default::default()
+                };
+                Effect::transform(selector, params, viewport.0, viewport.1)
+            }
+            AnimatedProperty::Brightness { .. } => {
+                let params = ColorAdjustParams {
+                    red_multiplier: iv.value,
+                    green_multiplier: iv.value,
+                    blue_multiplier: iv.value,
+                    ..Default::default()
+                };
+                Effect::color_adjust(selector, params)
+            }
         }
     }
 }
@@ -420,6 +469,109 @@ mod tests {
         assert_eq!(config.duration, Duration::from_millis(300));
         assert_eq!(config.delay, Duration::ZERO);
         assert_eq!(config.iterations, Some(1));
+    }
+
+    #[test]
+    fn test_interpolate_carries_real_values() {
+        // Blur: 0..10 at mid-progress → radius 5.0, kind BackdropBlur.
+        let blur = AnimatedProperty::Blur { from: 0.0, to: 10.0 };
+        let iv = blur.interpolate(0.5);
+        assert_eq!(iv.kind, EffectType::BackdropBlur);
+        assert!((iv.value - 5.0).abs() < f32::EPSILON, "radius must be interpolated, got {}", iv.value);
+
+        // Clamp: progress > 1.0 clamps to 1.0 → radius 10.0.
+        assert_eq!(blur.interpolate(1.5).value, 10.0);
+
+        // Translate: x and y both interpolated (value / value2).
+        let translate = AnimatedProperty::Translate {
+            from_x: 0.0,
+            from_y: 10.0,
+            to_x: 100.0,
+            to_y: 20.0,
+        };
+        let iv = translate.interpolate(0.25);
+        assert_eq!(iv.kind, EffectType::Transform2D);
+        assert!((iv.value - 25.0).abs() < f32::EPSILON);
+        assert!((iv.value2 - 12.5).abs() < f32::EPSILON);
+
+        // Rotate / Scale / Brightness carry their single scalar.
+        assert_eq!(AnimatedProperty::Scale { from: 1.0, to: 2.0 }.interpolate(0.5).value, 1.5);
+        assert_eq!(
+            AnimatedProperty::Rotate { from: 0.0, to: 90.0 }.interpolate(1.0).value,
+            90.0
+        );
+        assert_eq!(
+            AnimatedProperty::Brightness { from: 1.0, to: 2.0 }.interpolate(0.5).value,
+            1.5
+        );
+    }
+
+    #[test]
+    fn test_opacity_semantics_fade_to_black() {
+        // Decided semantics: opacity approximates as a ColorAdjust
+        // fade-to-black (RGB multipliers = interpolated alpha).
+        let opacity = AnimatedProperty::Opacity { from: 1.0, to: 0.0 };
+        let iv = opacity.interpolate(0.25);
+        assert_eq!(iv.kind, EffectType::ColorAdjust, "opacity animates toward ColorAdjust (fade-to-black approximation)");
+        assert!((iv.value - 0.75).abs() < f32::EPSILON);
+
+        let effect = opacity.to_effect(".target", (100, 100), 0.5);
+        assert_eq!(effect.effect_type, EffectType::ColorAdjust);
+        let params = effect.color_params.expect("opacity → ColorAdjust params");
+        assert!((params.red_multiplier - 0.5).abs() < f32::EPSILON);
+        assert_eq!(params.red_multiplier, params.green_multiplier);
+        assert_eq!(params.green_multiplier, params.blue_multiplier);
+    }
+
+    #[test]
+    fn test_to_effect_matches_interpolate() {
+        // to_effect() routes through interpolate(): every property's
+        // effect params must carry the same scalars interpolate() returns.
+        let props = [
+            AnimatedProperty::Blur { from: 2.0, to: 12.0 },
+            AnimatedProperty::Scale { from: 1.0, to: 3.0 },
+            AnimatedProperty::Translate {
+                from_x: 0.0,
+                from_y: 5.0,
+                to_x: 50.0,
+                to_y: 25.0,
+            },
+            AnimatedProperty::Rotate { from: 0.0, to: 180.0 },
+            AnimatedProperty::Brightness { from: 1.0, to: 2.0 },
+        ];
+        for p in props {
+            let iv = p.interpolate(0.5);
+            let effect = p.to_effect(".x", (80, 60), 0.5);
+            match iv.kind {
+                EffectType::BackdropBlur => {
+                    let bp = effect.blur_params.expect("blur params");
+                    assert!((bp.radius - iv.value).abs() < f32::EPSILON);
+                }
+                EffectType::Transform2D => {
+                    let tp = effect.transform_params.expect("transform params");
+                    let carried = if matches!(p, AnimatedProperty::Translate { .. }) {
+                        (tp.translate_x, tp.translate_y)
+                    } else if matches!(p, AnimatedProperty::Rotate { .. }) {
+                        (tp.rotate_degrees, 0.0)
+                    } else {
+                        // Scale is uniform: both axes ride `value`.
+                        (tp.scale_x, tp.scale_y)
+                    };
+                    assert!((carried.0 - iv.value).abs() < f32::EPSILON);
+                    let expected = if matches!(p, AnimatedProperty::Scale { .. }) {
+                        iv.value
+                    } else {
+                        iv.value2
+                    };
+                    assert!((carried.1 - expected).abs() < f32::EPSILON);
+                }
+                EffectType::ColorAdjust => {
+                    let cp = effect.color_params.expect("color params");
+                    assert!((cp.red_multiplier - iv.value).abs() < f32::EPSILON);
+                }
+                other => panic!("unexpected kind from interpolation: {other:?}"),
+            }
+        }
     }
 
     #[test]

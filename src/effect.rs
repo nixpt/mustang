@@ -10,7 +10,7 @@
 use crate::compositor::region::Region;
 
 /// Types of Mustang effects
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum EffectType {
     /// Gaussian blur effect for backdrop-filter
     BackdropBlur,

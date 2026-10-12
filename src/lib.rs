@@ -33,7 +33,7 @@ pub use effect::{
 };
 // Re-export Region from compositor
 pub use animation::{
-    AnimatedProperty, Animation, AnimationConfig, AnimationEngine, EasingFunction,
+    AnimatedProperty, Animation, AnimationConfig, AnimationEngine, EasingFunction, InterpolatedValue,
 };
 pub use compositor::region::Region;
 pub use config::{MustangConfig, MustangMode};
