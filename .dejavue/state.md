@@ -1,5 +1,5 @@
 # State
 
-Updated: 2026-10-12T06:18:31-05:00
+Updated: 2026-10-12T14:43:22-05:00
 
-main @ d0f8248 — PRs #6/#7/#8 merged: post-release audit row (4290 rows, 89 tests, doctrine HOLDS), examples/blur_gpu.rs full GPU pipeline (VelloImageRenderer raster + GpuEffectEngine post-process, pixel ground truth, new test-blur-gpu CI gate), published-crate drift-CI follow-up captured. 0.3.0 LIVE on crates.io. All PRs closed, branches cleaned. Open board: EffectType::Opacity (push_layer alpha), rgba8unorm storage textures, cross-repo CONTRIBUTING mirrors + consumer wiring, published-crate drift CI.
+v0.4.0 PUBLISHED to crates.io (2026-10-12T18:16Z, tag c76a- lineage via a64ae7d merge, Trusted Publishing). GPU-compute engine + per-region scheduler + LayerGuard + LRU cache + Newton easing + VelloImageRenderer all on crates.io. arniko PR#22 consumes 0.4.0 (region-aware DirectDomMutator + launch_reactive_scheduled + blur_panel take_dirty consumption) — CI green, CLEAN, awaiting merge. First real consumer of the 0.4 scheduling surface.
