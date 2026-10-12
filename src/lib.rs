@@ -53,8 +53,8 @@ pub use animation::js_binding::JsAnimationRuntime;
 pub use effect::LayerGuard;
 #[cfg(feature = "gpu")]
 pub use renderer::{
-    EffectScene, MustangSceneBundle, VelloRendererOptions, VelloScenePainter,
-    VelloWindowRenderer,
+    EffectScene, ImageRenderer, MustangSceneBundle, VelloImageRenderer, VelloRendererOptions,
+    VelloScenePainter, VelloWindowRenderer,
 };
 
 pub use compositor::*;

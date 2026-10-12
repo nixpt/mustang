@@ -98,6 +98,9 @@ invoke it with explicit region metadata.
    must continue to pass (the blur example is the operational demonstration
    of the boundary doctrine — see
    [`docs/architecture/`](./docs/architecture/) and the example doc-comment).
+   The full-GPU-pipeline gate `cargo test --features gpu --examples blur_gpu`
+   exercises the real vello-on-wgpu rasterization + the GPU compute engine
+   end to end (skips gracefully on runners without a wgpu adapter).
 4. **Run `./scripts/check-boundaries.sh`** locally. Zero violations expected.
 5. **Push & open PR.** In the PR description, include a one-line confirmation
    for each of the four boundaries ("No layout, no text shaping, no DOM,

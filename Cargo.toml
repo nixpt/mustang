@@ -85,3 +85,7 @@ naga = { version = "27", features = ["wgsl-in"] }
 [[example]]
 name = "blur"
 required-features = ["gpu"]
+
+[[example]]
+name = "blur_gpu"
+required-features = ["gpu"]
