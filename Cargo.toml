@@ -37,8 +37,12 @@ tracing = "0.1"
 version = "0.7"
 optional = true
 
+# nixpt/bliss-engine's fork of anyrender_vello (lib name stays `anyrender_vello`),
+# so mustang and bliss share one VelloScenePainter/VelloWindowRenderer type
+# instead of mixing upstream DioxusLabs anyrender_vello 0.7 with the fork.
 [dependencies.anyrender_vello]
-version = "0.7"
+package = "bliss-anyrender-vello"
+version = "0.3"
 optional = true
 
 [dependencies.vello]
