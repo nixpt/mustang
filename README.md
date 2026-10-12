@@ -35,6 +35,7 @@ Mustang is intentionally a **thin GPU effect compositor and scene scheduler**. I
 - A primitive-effect compositor (`Effect::blur`, `Effect::transform`, `Effect::color_adjust` — see `src/effect.rs`).
 - A scene-graph effect layer (region targeting, per-component effect cache, native-vs-deferred scheduling — see `src/compositor.rs`).
 - A WGPU submission pipeline with a `Renderer` integration point (see `src/renderer.rs` and the `gpu` feature).
+- A GPU-compute engine for the per-pixel effects that can't be scene primitives — `ColorAdjust` + `CanonicalFilter` land as a WGSL kernel (`GpuEffectEngine`), with a CPU reference implementation as the test oracle and the no-adapter fallback (see `src/gpu_compute.rs`).
 
 **What mustang is NOT — the four boundaries:**
 

@@ -110,9 +110,9 @@ invoke it with explicit region metadata.
     `Transform2D` (`transform: scale/translate/rotate`), `Clip`
     (`clip-path` security gate), `DropShadow` (`box-shadow` /
     `filter: drop-shadow`).
-  - **Deferred to GPU compute (CustomPaintSource path):** `ColorAdjust`
-    (multipliers + offsets), `CanonicalFilter` (`hue-rotate`, `saturate`,
-    `brightness`, `contrast`, `grayscale`, `invert`).
+  - **GPU compute (WGSL kernel + CPU reference, `src/gpu_compute.rs`):**
+    `ColorAdjust` (multipliers + offsets), `CanonicalFilter` (`hue-rotate`,
+    `saturate`, `brightness`, `contrast`, `grayscale`, `invert`).
 
   Categories covered as of s1+a: blur, transform, color-adjust, drop-shadow,
   and the canonical CSS filter set. Additions outside this set must not
