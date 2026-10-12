@@ -1,5 +1,10 @@
 # State
 
-Updated: 2026-10-11T20:36:30-05:00
+Updated: 2026-10-12T10:18:42Z
 
-Feature branch feature-animation-interpolation-and-scheduler-rects: 3 phases landed (bd6b1bf animation interpolation+Opacity semantics, 27b72f8 scheduler per-region dirty rects, d37cfef GPU compute path w/ WGSL kernel + parity-verified engine, 7e5ba86 cargo-deny bans). 74 tests, all 3 feature gates PASS, boundary doctrine HOLDS (4290 rows), cargo-deny bans ok. Audit cadence row appended (2026-10-12T01:32:02Z). Branch NOT merged to main yet — awaiting user merge decision.
+PR#4 MERGED via merge commit 72400e5 (animation interpolation + scheduler
+per-region rects + GPU compute path + cargo-deny). PR#5 (harvest/pr1-correctness)
+rebased onto the merged main: C1 Newton cubic-bezier, H1 LRU effect cache,
+RAII LayerGuard/begin_layer_scope + non_exhaustive Effect, parser scale(x,y) +
+multiplicative color chain, cargo-audit ^0.22 pin. PR#1 closed as superseded
+(audit comment on the PR). CI green on both PRs pre-merge.

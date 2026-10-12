@@ -215,3 +215,22 @@ jobs:
               echo "  • **test-full / test-js failure**: an animation or JS-runtime regression slipped in — re-check 'src/animation/' + 'src/lib.rs'; for test-js also check boa_engine still resolves icu_normalizer ~2.3 alongside parley ^2.1.1."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+  cargo-audit:
+    # RustSec advisory audit — independent of the boundary gates above (it
+    # reads Cargo.lock, not the source tree), so it runs as its own job and
+    # must not block on compile-gate flakiness.
+    name: cargo audit (rustsec)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install cargo-audit
+        # 0.21 cannot parse CVSS v4.0 vectors (e.g. RUSTSEC-2026-0124's
+        # advisory TOML) — 0.22's rustsec crate reads them fine.
+        run: cargo install --locked cargo-audit --version "^0.22"
+      - name: Audit dependencies
+        run: cargo audit

@@ -175,75 +175,72 @@ fn linear(t: f32) -> f32 {
     t
 }
 
-// CSS default ease (approximated as cubic-bezier(0.25, 0.1, 0.25, 1.0)).
-// The bezier function below treats p0/y-at-0 and p3/y-at-1 as the polynomial's
-// endpoints, so the call sites must clamp t=0 and t=1 (the test boundary
-// case won't tolerate an off-by-epsilon return from a CSS-control x value
-// mistakenly passed as y-at-0).
+// CSS default ease (cubic-bezier(0.25, 0.1, 0.25, 1.0)).
 fn ease(t: f32) -> f32 {
-    if t <= 0.0 {
-        return 0.0;
-    }
-    if t >= 1.0 {
-        return 1.0;
-    }
     cubic_bezier(t, 0.25, 0.1, 0.25, 1.0)
 }
 
 // CSS ease-in (cubic-bezier(0.42, 0, 1.0, 1.0))
 fn ease_in(t: f32) -> f32 {
-    if t <= 0.0 {
-        return 0.0;
-    }
-    if t >= 1.0 {
-        return 1.0;
-    }
     cubic_bezier(t, 0.42, 0.0, 1.0, 1.0)
 }
 
 // CSS ease-out (cubic-bezier(0, 0, 0.58, 1.0))
 fn ease_out(t: f32) -> f32 {
-    if t <= 0.0 {
-        return 0.0;
-    }
-    if t >= 1.0 {
-        return 1.0;
-    }
     cubic_bezier(t, 0.0, 0.0, 0.58, 1.0)
 }
 
 // CSS ease-in-out (cubic-bezier(0.42, 0, 0.58, 1.0))
 fn ease_in_out(t: f32) -> f32 {
-    if t <= 0.0 {
-        return 0.0;
-    }
-    if t >= 1.0 {
-        return 1.0;
-    }
     cubic_bezier(t, 0.42, 0.0, 0.58, 1.0)
 }
 
-// Cubic Bezier approximation — Hermite cubic form.
+// CSS cubic-bezier easing — a proper x-progression solve, not a raw
+// Bernstein evaluation.
 //
-// IMPORTANT: the first and last param (`p0`, `p3`) are treated as
-// y-at-t=0 and y-at-t=1 of the eased curve (NOT as CSS bezier
-// x-control values). New callers MUST clamp t ≤ 0.0 → 0.0 and t ≥ 1.0 → 1.0
-// before calling this helper — see the four CSS-bezier wrappers above.
+// In CSS, the parameter of `cubic-bezier(x1, y1, x2, y2)` is the PROGRESS
+// x ∈ [0,1]; the curve's own parameter t must be found such that
+// bezier_x(t) = x, then the eased value is bezier_y(t). Evaluating the
+// Bernstein polynomial at t = x directly is the classic wrong-easing bug
+// (e.g. `ease(0.0)` → 0.25 instead of 0 — `ease`'s old signature fed the
+// progress into the wrong slot and wrappers clamped it away).
 //
-// TODO(at-the-API-level): drop `p0` and `p3` from the signature and
-// hardcode them to 0.0 / 1.0 (CSS easing convention). That removes the
-// foot-gun that caused `ease(0.0) = 0.25` pre-fix. The simplified bezier
-// here also lacks proper x-progression (no Newton-Raphson lookup of the
-// bezier parameter t from x-progress), so intermediate values approximate
-// real CSS easings rather than match them bit-for-bit.
-fn cubic_bezier(t: f32, p0: f32, p1: f32, p2: f32, p3: f32) -> f32 {
-    let u = 1.0 - t;
-    let tt = t * t;
-    let uu = u * u;
-    let uuu = uu * u;
-    let ttt = tt * t;
+// `bezier_x` is monotonic for CSS control points (x1, x2 ∈ [0,1]), so the
+// Newton-Raphson solve on x converges; 8 iterations reaches < 1e-6, far
+// below perceptual resolution. When the derivative is ~0 (near the
+// monotone flat point), fall back to bisection of the bracketing interval.
+fn cubic_bezier(x: f32, x1: f32, y1: f32, x2: f32, y2: f32) -> f32 {
+    if x <= 0.0 {
+        return 0.0;
+    }
+    if x >= 1.0 {
+        return 1.0;
+    }
 
-    uuu * p0 + 3.0 * uu * t * p1 + 3.0 * u * tt * p2 + ttt * p3
+    // Newton-Raphson on bezier_x(t) = x
+    let mut t = x;
+    for _ in 0..8 {
+        let one_minus_t = 1.0 - t;
+        let bezier_x = 3.0 * one_minus_t * one_minus_t * t * x1
+            + 3.0 * one_minus_t * t * t * x2
+            + t * t * t;
+        let bezier_x_d = 3.0 * one_minus_t * one_minus_t * x1
+            + 6.0 * one_minus_t * t * (x2 - x1)
+            + 3.0 * t * t * (1.0 - x2);
+        let dx = bezier_x - x;
+        if dx.abs() < 1e-6 {
+            break;
+        }
+        if bezier_x_d.abs() < 1e-6 {
+            // Derivative ~0: split the interval instead of dividing by ~0.
+            t = (t + x) * 0.5;
+            continue;
+        }
+        t = (t - dx / bezier_x_d).clamp(0.0, 1.0);
+    }
+
+    let one_minus_t = 1.0 - t;
+    3.0 * one_minus_t * one_minus_t * t * y1 + 3.0 * one_minus_t * t * t * y2 + t * t * t
 }
 
 // Quadratic
@@ -512,6 +509,42 @@ mod tests {
                 "{:?} at 1.0 should be ~1",
                 easing
             );
+        }
+    }
+
+    #[test]
+    fn test_css_bezier_midpoints_match_reference() {
+        // Reference values computed with the spec definition (solve
+        // bezier_x(t) = x, then evaluate bezier_y(t)) — a
+        // raw-Bernstein-at-t=x evaluation fails these. Tolerance 1e-3.
+        // ease = cubic-bezier(0.25, 0.1, 0.25, 1.0)
+        assert!((EasingFunction::Ease.apply(0.25) - 0.4085).abs() < 1e-3);
+        assert!((EasingFunction::Ease.apply(0.5) - 0.8024).abs() < 1e-3);
+        assert!((EasingFunction::Ease.apply(0.75) - 0.9605).abs() < 1e-3);
+        // ease-in = cubic-bezier(0.42, 0, 1, 1): slow start.
+        assert!((EasingFunction::EaseIn.apply(0.1) - 0.0170).abs() < 1e-3);
+        assert!((EasingFunction::EaseIn.apply(0.25) - 0.0935).abs() < 1e-3);
+        assert!((EasingFunction::EaseIn.apply(0.75) - 0.6219).abs() < 1e-3);
+        // ease-out = cubic-bezier(0, 0, 0.58, 1): fast start (mirror of ease-in).
+        assert!((EasingFunction::EaseOut.apply(0.25) - 0.3781).abs() < 1e-3);
+        assert!((EasingFunction::EaseOut.apply(0.75) - 0.9065).abs() < 1e-3);
+        // ease-in-out symmetry: f(0.5+x) = 1 - f(0.5-x).
+        let a = EasingFunction::EaseInOut.apply(0.25);
+        let b = EasingFunction::EaseInOut.apply(0.75);
+        assert!((a + b - 1.0).abs() < 0.002, "ease-in-out must be point-symmetric about (0.5, 0.5)");
+    }
+
+    #[test]
+    fn test_css_bezier_monotonic_progression() {
+        // A CSS easing must be non-decreasing in progress.
+        let easings = [EasingFunction::Ease, EasingFunction::EaseIn, EasingFunction::EaseOut, EasingFunction::EaseInOut];
+        for easing in easings {
+            let mut prev = -1.0;
+            for i in 0..=20 {
+                let v = easing.apply(i as f32 / 20.0);
+                assert!(v >= prev - 1e-4, "{easing:?} decreased at progress {}/20", i);
+                prev = v;
+            }
         }
     }
 
