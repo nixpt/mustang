@@ -999,6 +999,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gpu")] // engine types only exist under the gpu feature
     fn test_gpu_parity_with_cpu_reference_when_adapter_available() {
         let Some(engine) = GpuEffectEngine::try_new() else {
             // No adapter (headless CI without Vulkan/GL) — the CPU oracle
@@ -1051,6 +1052,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gpu")] // engine types only exist under the gpu feature
     fn test_gpu_buffer_length_validation() {
         let Some(engine) = GpuEffectEngine::try_new() else {
             eprintln!("[mustang] no wgpu adapter available — length-validation test skipped");
