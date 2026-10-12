@@ -41,6 +41,18 @@ grep-matches each prohibited crate name (one per boundary), and exits non-zero
 with a remediation hint on any violation. It runs in seconds on a warm cache
 and is the machine-runnable form of the four-fold test.
 
+The CI workflow also runs the heavier-weight `cargo-deny` cross-check over
+the same prohibited-crate list (encoded in `deny.toml` `[bans]`,
+`cargo deny --all-features check bans`):
+
+```bash
+cargo deny --all-features check bans
+```
+
+The two encodings (script CATEGORIES array + deny.toml deny list) must stay
+in sync — a drift between them is itself a violation. Update BOTH when the
+prohibited-crate list changes.
+
 > **Note on CI integration.** This is now wired — see the
 > `.github/workflows/boundary-check.yml` workflow. Every push to `main` and
 > every PR runs `./scripts/check-boundaries.sh` + the three Cargo-check
@@ -163,10 +175,11 @@ and **Apache-2.0**, matching the rest of the repo.
   `.github/` infrastructure was bootstrapped in this commit; the workflow
   is the machine-runnable mirror of the cadence table in
   `docs/architecture/audit-results.md`.
+- ✅ **(done)** **`cargo-deny`** integration — `deny.toml` `[bans]` encodes
+  the prohibited-crate list (including the `dioxus-*` wildcard umbrella);
+  wired into the boundary-check workflow as the `deny-bans` step.
 - **Mirror CONTRIBUTING.md → arniko / bliss-engine** with the reciprocal
   "what THIS repo IS, not IS-NOT" framing from each sibling's perspective.
-- **`cargo-deny`** integration as a heavier-weight alternative to the
-  bash-script grep if/when the prohibited-crate list grows beyond ~6 names.
 - **Published-crate CI**: once the repo is published to crates.io as
   `arniko-mustang`, consider a periodic CI run against the published
   tarball to detect drift between repo source and published artifact

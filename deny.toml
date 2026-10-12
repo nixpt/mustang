@@ -1,0 +1,44 @@
+# cargo-deny configuration — the heavier-weight, machine-enforced form of
+# the four-fold Boundary Doctrine (CONTRIBUTING.md ## The four-fold test).
+#
+# The bash-script grep (`scripts/check-boundaries.sh`) remains the canonical
+# local pre-merge gate; cargo-deny is the CI-grade cross-check over the same
+# prohibited-crate list. The list here must stay in sync with the script's
+# CATEGORIES array — both encode the same doctrine, and a drift between them
+# is itself a violation.
+#
+# Run: `cargo deny --all-features check bans` (the strictest feature
+# combination, mirroring `cargo tree --features full` in the audit).
+
+[graph]
+# Strictest combination: every optional dep (gpu + animation) is included,
+# matching `cargo tree --features full` in docs/architecture/audit-results.md.
+all-features = true
+
+[bans]
+# Duplicate versions are upstream-crate-graph volatility, not a boundary
+# violation — warn only (matches the audit's row-count fingerprint stance).
+multiple-versions = "warn"
+
+deny = [
+    # --- No layout ---------------------------------------------------------
+    { name = "taffy" },
+    { name = "taffy_geom" },
+    # --- No text shaping ---------------------------------------------------
+    { name = "parley" },
+    { name = "font-kit" },
+    # --- No DOM ------------------------------------------------------------
+    { name = "bliss-dom" },
+    # The full dioxus umbrella (dioxus, dioxus-core, dioxus-html, ...) —
+    # wildcard form of the script's `dom:prefix:dioxus-` umbrella entries.
+    { name = "dioxus" },
+    { name = "dioxus-*" },
+    { name = "dioxus_*" },
+    # --- No HTML parsing ---------------------------------------------------
+    { name = "html5ever" },
+    { name = "markup5ever" },
+    # --- CSS-layer auxiliaries (Stylo stack, per the s305 settlement) -------
+    { name = "stylo" },
+    { name = "cssparser" },
+    { name = "selectors" },
+]
