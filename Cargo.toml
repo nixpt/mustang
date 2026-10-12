@@ -19,7 +19,7 @@ name = "mustang"
 
 [features]
 default = []
-gpu = ["dep:anyrender", "dep:anyrender_vello", "dep:wgpu", "dep:kurbo", "dep:peniko", "dep:vello"]
+gpu = ["dep:anyrender", "dep:anyrender_vello", "dep:wgpu", "dep:kurbo", "dep:peniko", "dep:vello", "dep:bytemuck", "dep:pollster"]
 # animation = easing + engine. The JS animation runtime is the separate opt-in
 # `js` feature: boa_engine 0.22 pins icu_normalizer ~2.3, compatible with
 # parley's ^2.1.1 (boa 0.21's ~2.0.0 was the conflict that deferred it).
@@ -61,9 +61,25 @@ optional = true
 version = "0.6"
 optional = true
 
+# GPU-compute engine helpers (optional — enabled by the `gpu` feature only).
+# All three are already transitive deps of the gpu path (bytemuck via vello,
+# pollster via anyrender_vello, naga via wgpu); declaring them optional keeps
+# the default (no-gpu) build dep-free.
+[dependencies.bytemuck]
+version = "1"
+features = ["derive"]
+optional = true
+
+[dependencies.pollster]
+version = "0.4"
+optional = true
+
 [dev-dependencies]
 tokio-test = "0.4"
 png = "0.17"
+# WGSL validation for the color-math kernel — runs in CI without any GPU
+# hardware (same naga that wgpu itself uses).
+naga = { version = "27", features = ["wgsl-in"] }
 
 # The blur example only has a `main` with the gpu feature.
 [[example]]

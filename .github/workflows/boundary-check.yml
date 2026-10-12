@@ -10,6 +10,8 @@
 #      (associative arrays / `declare -a`). Ubuntu-latest runners ship bash 5+,
 #      so the bash-4+ requirement is satisfied natively. Exit codes: 0 clean,
 #      1 violation, 2 preflight failure — both non-zero codes block the PR.
+#   2. cargo-deny bans check (`deny.toml`) — the heavier-weight cross-check
+#      over the same prohibited-crate list (--all-features).
 #   2. The three Cargo-check feature-gates (default / gpu / full) — mirrors
 #      the three rows in the Operational cadence table of
 #      `docs/architecture/audit-results.md`.
@@ -118,6 +120,18 @@ jobs:
           chmod +x ./scripts/check-boundaries.sh
           ./scripts/check-boundaries.sh
 
+      - name: cargo-deny bans check (heavier-weight boundary enforcement)
+        # The CI-grade cross-check over the same prohibited-crate list,
+        # encoded in `deny.toml` ([bans]). The deny list must stay in sync
+        # with `scripts/check-boundaries.sh`'s CATEGORIES array — a drift
+        # between the two encodings is itself a violation. `--all-features`
+        # mirrors the audit's strictest `--features full` combination.
+        id: deny-bans
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check bans
+          arguments: --all-features
+
       - name: Compile-side gates — default features
         id: check-default
         run: |
@@ -182,6 +196,7 @@ jobs:
             echo "| Gate | Status |"
             echo "|---|---|"
             echo "| boundary-gate (four-fold test) | **${{ steps.boundary-gate.outcome }}** |"
+            echo "| deny-bans (cargo-deny)         | **${{ steps.deny-bans.outcome }}** |"
             echo "| check-default                  | **${{ steps.check-default.outcome }}** |"
             echo "| check-gpu                      | **${{ steps.check-gpu.outcome }}** |"
             echo "| check-full                     | **${{ steps.check-full.outcome }}** |"

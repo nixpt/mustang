@@ -23,6 +23,7 @@ pub mod animation;
 pub mod compositor;
 pub mod config;
 pub mod effect;
+pub mod gpu_compute;
 pub mod renderer;
 pub mod scheduler;
 
@@ -33,10 +34,13 @@ pub use effect::{
 };
 // Re-export Region from compositor
 pub use animation::{
-    AnimatedProperty, Animation, AnimationConfig, AnimationEngine, EasingFunction,
+    AnimatedProperty, Animation, AnimationConfig, AnimationEngine, EasingFunction, InterpolatedValue,
 };
 pub use compositor::region::Region;
 pub use config::{MustangConfig, MustangMode};
+pub use gpu_compute::{ColorOp, cpu_apply_color_op, region_pixel_bounds};
+#[cfg(feature = "gpu")]
+pub use gpu_compute::{COLOR_MATH_WGSL, GpuComputeError, GpuEffectEngine};
 
 // JS animation runtime (boa_engine), behind the opt-in `js` feature. It was
 // deferred while boa_engine 0.21 pinned icu_normalizer ~2.0.0, which could not
@@ -51,7 +55,7 @@ pub use renderer::{
 };
 
 pub use compositor::*;
-pub use scheduler::SceneScheduler;
+pub use scheduler::{SceneDirtyState, SceneScheduler};
 
 use std::collections::HashMap;
 

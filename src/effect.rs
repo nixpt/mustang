@@ -10,7 +10,7 @@
 use crate::compositor::region::Region;
 
 /// Types of Mustang effects
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum EffectType {
     /// Gaussian blur effect for backdrop-filter
     BackdropBlur,
@@ -337,9 +337,10 @@ impl Effect {
 
     /// Create a canonical CSS filter op effect.
     ///
-    /// Requires GPU compute (deferred to the CustomPaintSource path, like
-    /// `Effect::color_adjust`); the scene-native apply path is a no-op.
-    /// To express a CSS filter chain, emit multiple `Effect` instances
+    /// Requires GPU compute — applied by the [`crate::gpu_compute`] engine
+    /// (`GpuEffectEngine`) post-rasterization, like `Effect::color_adjust`;
+    /// the scene-native apply path is a no-op. To express a CSS filter
+    /// chain, emit multiple `Effect` instances
     /// with `Effect::canonical_filter(...)` and the same selector — one
     /// Effect per filter function.
     pub fn canonical_filter(
@@ -488,8 +489,9 @@ impl<S: anyrender::PaintScene> ApplyEffect<S> for Effect {
                 // Note: Caller must pop_layer after rendering content
             }
             EffectType::ColorAdjust => {
-                // Requires GPU compute - handled by CustomPaintSource
-                // This is a no-op in scene-native rendering
+                // Requires GPU compute — applied post-rasterization by
+                // `gpu_compute::GpuEffectEngine` over the effect's region
+                // of the rasterized buffer. No-op in scene-native encoding.
             }
             EffectType::DropShadow => {
                 if let Some(ref params) = self.drop_shadow_params {
@@ -525,11 +527,12 @@ impl<S: anyrender::PaintScene> ApplyEffect<S> for Effect {
                 }
             }
             EffectType::CanonicalFilter => {
-                // Requires GPU compute - handled by CustomPaintSource
-                // (matches `EffectType::ColorAdjust`'s deferred semantics).
-                // One filter op per Effect; CSS filter chains are
-                // expressed as multiple CanonicalFilter Effects on the
-                // same selector, each committing/replaying atomically.
+                // Requires GPU compute — applied post-rasterization by
+                // `gpu_compute::GpuEffectEngine` (matches
+                // `EffectType::ColorAdjust`'s semantics). One filter op
+                // per Effect; CSS filter chains are expressed as multiple
+                // CanonicalFilter Effects on the same selector, each
+                // committing/replaying atomically.
             }
         }
     }

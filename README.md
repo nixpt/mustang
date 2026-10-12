@@ -35,6 +35,7 @@ Mustang is intentionally a **thin GPU effect compositor and scene scheduler**. I
 - A primitive-effect compositor (`Effect::blur`, `Effect::transform`, `Effect::color_adjust` — see `src/effect.rs`).
 - A scene-graph effect layer (region targeting, per-component effect cache, native-vs-deferred scheduling — see `src/compositor.rs`).
 - A WGPU submission pipeline with a `Renderer` integration point (see `src/renderer.rs` and the `gpu` feature).
+- A GPU-compute engine for the per-pixel effects that can't be scene primitives — `ColorAdjust` + `CanonicalFilter` land as a WGSL kernel (`GpuEffectEngine`), with a CPU reference implementation as the test oracle and the no-adapter fallback (see `src/gpu_compute.rs`).
 
 **What mustang is NOT — the four boundaries:**
 
@@ -75,7 +76,36 @@ let compositor = MustangCompositor::new(config);
 
 Mustang was originally part of the Arniko SDK but has been moved to the platform rendering layer for better reusability across the Exosphere ecosystem.
 
+## Relationship to Upstream
+
+Mustang is **not a fork** of any third-party project — it is an extraction of
+Exosphere-authored code. Lineage:
+
+1. Originally an arniko-workspace crate (Blitz-adjacent rendering experiments
+   consolidated into a GPU effect compositor).
+2. Extracted to the standalone `nixpt/mustang` repo by
+   [`25f898c`](https://github.com/nixpt/arniko/commit/25f898c) on
+   [`nixpt/arniko`](https://github.com/nixpt/arniko) — *"extract mustang →
+   standalone `nixpt/mustang` project"*.
+3. The s305 settlement (2026-06-19) fixed the four-project architecture
+   (arniko / mustang / bliss-engine / surfer) and mustang's thin-compositor
+   role — see [`docs/architecture/`](./docs/architecture/).
+
+Every source file is `Copyright (c) 2026 The Exosphere Authors`. Vello,
+WGPU, Kurbo, Peniko, and anyrender are consumed as standard crates.io
+dependencies — nothing is vendored, so no third-party notice obligations
+attach to this repo. (Sibling context: the `bliss*` crates in arniko ARE a
+Blitz fork and carry a [NOTICE](https://github.com/nixpt/arniko/blob/main/NOTICE)
+crediting Dioxus Labs; that lineage does not extend to mustang.)
+
 ## Licensing
 
 Copyright (c) 2026 **The Exosphere Authors**.
-Dual-licensed under **MIT** or **Apache-2.0**.
+Dual-licensed under **MIT** ([LICENSE-MIT](./LICENSE-MIT)) or **Apache-2.0**
+([LICENSE-APACHE](./LICENSE-APACHE)).
+
+The `license = "MIT OR Apache-2.0"` SPDX field in `Cargo.toml` is the
+machine-readable form (crates.io); the two text files are the authoritative
+license texts. This matches the sibling repos (`nixpt/arniko`,
+`nixpt/bliss-engine`), which ship the same dual license under the same file
+names.
