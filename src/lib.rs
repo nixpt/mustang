@@ -51,7 +51,7 @@ pub use renderer::{
 };
 
 pub use compositor::*;
-pub use scheduler::SceneScheduler;
+pub use scheduler::{SceneDirtyState, SceneScheduler};
 
 use std::collections::HashMap;
 
