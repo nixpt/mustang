@@ -1,0 +1,51 @@
+@caison { version: "1.0" }
+
+schema: "milestones/1"
+
+project: {
+  name: "mustang"
+  kind: "repo"
+  lifecycle: "maintenance" ~0.7 @verified { at: "2026-11-18", by: "altair" }
+  lifecycle_since: "2026-10-12"
+  home: "zorro"
+  summary: "the arniko paint/animation layer (vello raster, GPU compute effects, per-region scheduler), published as arniko-mustang 0.4.0 on 2026-10-12 and consumed by arniko; no commits on main since"
+  stewards: ["altair"]
+  evidence: {
+    default_branch: "main"
+    registries: [{ registry: "crates.io", name: "arniko-mustang" }]
+  }
+}
+
+milestones: [
+  {
+    id: "0.3"
+    title: "publishable: JS runtime on boa 0.22, true MSRV"
+    status: "done" @verified { at: "2026-11-18", by: "altair" }
+    done_at: "2026-09-27"
+    version: "v0.3.0"
+    done_when: [
+      { claim: "PR #2 merged", check: { kind: "merged", pr: "2" } },
+      { claim: "v0.3.0 tagged", check: { kind: "tag", pattern: "v0.3.0" } },
+    ]
+  },
+  {
+    id: "0.4"
+    title: "GPU compute engine, per-region scheduler, renderer integration"
+    status: "done" @verified { at: "2026-11-18", by: "altair" }
+    done_at: "2026-10-12"
+    version: "v0.4.0"
+    done_when: [
+      { claim: "interpolation + per-region rects + GPU compute (PR #4)", check: { kind: "merged", pr: "4" } },
+      { claim: "v0.4.0 tagged", check: { kind: "tag", pattern: "v0.4.0" } },
+      { claim: "arniko-mustang on crates.io", check: { kind: "published", registry: "crates.io", name: "arniko-mustang", version: "0.4.0" } },
+      { claim: "arniko consumes 0.4 (arniko PR #22)", met: true @verified { at: "2026-11-18", by: "altair" } },
+    ]
+  },
+  {
+    id: "0.5"
+    title: "vello scene effects for raw vello::Scene hosts"
+    status: "planned" ~0.5 @verified { at: "2026-11-18", by: "altair" }
+    done_when: ["apply_vello_scene_effects lands on main and ships in a release"]
+    notes: "only copy is local commit a57547b on branch altair/vello-scene-entry in the zorro checkout; never pushed (checked 2026-11-18). Whether noonoo replaces mustang's role is open."
+  },
+]
