@@ -158,6 +158,22 @@ impl MustangCompositor {
         }
     }
 
+    /// Apply effects to a raw `vello::Scene`.
+    ///
+    /// For hosts that compose a Vello scene directly and have no anyrender
+    /// painter (e.g. noonoo's frame hooks). Same result as
+    /// [`Self::apply_scene_effects`] through a `VelloScenePainter`.
+    #[cfg(feature = "gpu")]
+    pub fn apply_vello_scene_effects(
+        &mut self,
+        scene: &mut vello::Scene,
+        effects: &[Effect],
+        viewport: (u32, u32),
+    ) -> SceneEffectResult {
+        let mut painter = anyrender_vello::VelloScenePainter::new(scene);
+        self.apply_scene_effects(&mut painter, effects, viewport)
+    }
+
     /// Extract effects from metadata using the EffectMetadata trait
     pub fn extract_effects(
         &self,
